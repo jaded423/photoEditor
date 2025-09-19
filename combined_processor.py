@@ -494,9 +494,15 @@ def process_photo(input_path, output_path):
         print(f"Error processing photo {input_path}: {str(e)}")
         return False
 
-def process_media_batch(raw_dir):
-    """Process all photos and videos in the raw directory."""
-    
+def process_media_batch(raw_dir, progress_callback=None, stop_event=None):
+    """Process all photos and videos in the raw directory.
+
+    Args:
+        raw_dir: path to directory containing media files
+        progress_callback: optional callable(processed_count, total_files, filename, message)
+                           called after each file is processed or skipped. If None, no callbacks.
+    """
+
     raw_path = Path(raw_dir)
     if not raw_path.exists():
         raise FileNotFoundError(f"Raw directory not found: {raw_dir}")
@@ -524,21 +530,34 @@ def process_media_batch(raw_dir):
         video_files.extend(raw_path.glob(f"*{ext.upper()}"))
     
     total_files = len(photo_files) + len(video_files)
-    
+
     if total_files == 0:
-        print(f"No media files found in {raw_dir}")
+        msg = f"No media files found in {raw_dir}"
+        print(msg)
         print(f"Supported photo formats: {', '.join(photo_extensions)}")
         print(f"Supported video formats: {', '.join(video_extensions)}")
+        if progress_callback:
+            progress_callback(0, 0, None, msg)
         return
-    
+
     print(f"Found {len(photo_files)} photos and {len(video_files)} videos to process...")
-    
+
+    if progress_callback:
+        progress_callback(0, total_files, None, f"Found {len(photo_files)} photos and {len(video_files)} videos")
+
     success_count = 0
+    processed_count = 0
     
     # Process photos
     if photo_files and PHOTO_PROCESSING_AVAILABLE:
         print("\n=== PROCESSING PHOTOS ===")
         for i, photo_file in enumerate(photo_files, 1):
+            # Check for stop request
+            if stop_event is not None and stop_event.is_set():
+                print("Processing stopped by user (photos)")
+                if progress_callback:
+                    progress_callback(processed_count, total_files, None, "Stopped by user")
+                return
             try:
                 output_file = edited_dir / f"{photo_file.stem}.png"
                 print(f"\n[{i}/{len(photo_files)}] Processing photo: {photo_file.name}")
@@ -556,17 +575,42 @@ def process_media_batch(raw_dir):
                     os.rename(str(photo_file), str(original_path))
                     print(f"Moved original to: {original_path}")
                     success_count += 1
+                    processed_count += 1
+                    if progress_callback:
+                        progress_callback(processed_count, total_files, str(photo_file.name), f"Processed photo: {photo_file.name}")
+                else:
+                    processed_count += 1
+                    if progress_callback:
+                        progress_callback(processed_count, total_files, str(photo_file.name), f"Failed to process photo: {photo_file.name}")
                 
             except Exception as e:
                 print(f"Failed to process photo {photo_file.name}: {str(e)}")
+                processed_count += 1
+                if progress_callback:
+                    progress_callback(processed_count, total_files, str(photo_file.name), f"Error: {e}")
     
     elif photo_files and not PHOTO_PROCESSING_AVAILABLE:
         print(f"\nSkipping {len(photo_files)} photos - photo processing libraries not installed")
+        for photo_file in photo_files:
+            processed_count += 1
+            if progress_callback:
+                progress_callback(processed_count, total_files, str(photo_file.name), "Skipped (photo processing libs missing)")
+            if stop_event is not None and stop_event.is_set():
+                print("Processing stopped by user (photos skipped)")
+                if progress_callback:
+                    progress_callback(processed_count, total_files, None, "Stopped by user")
+                return
     
     # Process videos
     if video_files:
         print("\n=== PROCESSING VIDEOS ===")
         for i, video_file in enumerate(video_files, 1):
+            # Check for stop request
+            if stop_event is not None and stop_event.is_set():
+                print("Processing stopped by user (videos)")
+                if progress_callback:
+                    progress_callback(processed_count, total_files, None, "Stopped by user")
+                return
             try:
                 output_file = edited_dir / video_file.name
                 print(f"\n[{i}/{len(video_files)}] Processing video: {video_file.name}")
@@ -585,9 +629,20 @@ def process_media_batch(raw_dir):
                 os.rename(str(video_file), str(original_path))
                 print(f"Moved original to: {original_path}")
                 success_count += 1
+                processed_count += 1
+                if progress_callback:
+                    progress_callback(processed_count, total_files, str(video_file.name), f"Processed video: {video_file.name}")
                 
             except Exception as e:
                 print(f"Failed to process video {video_file.name}: {str(e)}")
+                processed_count += 1
+                if progress_callback:
+                    progress_callback(processed_count, total_files, str(video_file.name), f"Error: {e}")
+                if stop_event is not None and stop_event.is_set():
+                    print("Processing stopped by user (error path)")
+                    if progress_callback:
+                        progress_callback(processed_count, total_files, None, "Stopped by user")
+                    return
     
     print(f"\n=== BATCH COMPLETE ===")
     print(f"Successfully processed {success_count}/{total_files} files")
