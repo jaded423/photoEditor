@@ -1,25 +1,51 @@
 import threading
 import queue
-import time
 import os
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk
-import threading
-import queue
-import time
-import os
-from pathlib import Path
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-from PIL import Image, ImageTk
+import logging
+import datetime
+import traceback
 
-# Ensure we can import the processor from parent folder
+# When bundled by PyInstaller, set a safe import path
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+if getattr(sys, 'frozen', False):
+    # running in a bundle
+    bundle_root = Path(sys._MEIPASS)
+    sys.path.insert(0, str(bundle_root))
+else:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from combined_processor import process_media_batch
+
+
+# Setup logging early so we capture import/startup errors
+def setup_logging():
+    try:
+        log_dir = Path.home() / 'Library' / 'Logs' / 'CombinedProcessor'
+        log_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        log_file = log_dir / f'combined_processor-{ts}.log'
+
+        handlers = [logging.FileHandler(log_file, encoding='utf-8')]
+        # Also keep a console handler when running from terminal
+        handlers.append(logging.StreamHandler())
+
+        logging.basicConfig(level=logging.DEBUG,
+                            format='%(asctime)s %(levelname)s %(name)s: %(message)s',
+                            handlers=handlers)
+
+        logging.info('Logging started; log file: %s', str(log_file))
+        return log_file
+    except Exception:
+        # Fallback to basic config
+        logging.basicConfig(level=logging.DEBUG)
+        return None
+
+
+LOGFILE = setup_logging()
 
 
 class ProcessorThread(threading.Thread):
@@ -29,7 +55,12 @@ class ProcessorThread(threading.Thread):
         self.progress_queue = progress_queue
         self.stop_event = stop_event
 
+    def start(self):
+        logging.info('ProcessorThread.start() called for folder: %s', self.folder)
+        super().start()
+
     def run(self):
+        logging.info('ProcessorThread.run() beginning for folder: %s', self.folder)
         def cb(processed_count, total_files, filename, message):
             # Put progress updates into the queue for the main thread
             self.progress_queue.put((processed_count, total_files, filename, message))
@@ -42,13 +73,18 @@ class ProcessorThread(threading.Thread):
             else:
                 self.progress_queue.put(('done', None, None, 'Stopped'))
         except Exception as e:
-            self.progress_queue.put(('error', None, None, str(e)))
+            logging.exception('ProcessorThread failed')
+            tb = traceback.format_exc()
+            self.progress_queue.put(('error', None, None, f"{e}\n{tb}"))
+        finally:
+            logging.info('ProcessorThread.run() exiting for folder: %s', self.folder)
 
 
 class App:
     def __init__(self, root):
         self.root = root
         root.title('Combined Processor - Tk')
+        logging.info('App.__init__ starting')
         self.progress_queue = queue.Queue()
 
         frm = ttk.Frame(root, padding=12)
@@ -79,6 +115,7 @@ class App:
         self.worker = None
         self.stop_event = None
         self.root.after(200, self.poll_queue)
+        logging.info('App.__init__ completed')
 
     def browse_folder(self):
         folder = filedialog.askdirectory()
@@ -100,6 +137,7 @@ class App:
         # Create a stop event for cooperative cancellation
         self.stop_event = threading.Event()
         self.worker = ProcessorThread(folder, self.progress_queue, self.stop_event)
+        logging.info('Starting processor thread for folder: %s', folder)
         self.worker.start()
 
     def stop_processing(self):
@@ -161,9 +199,25 @@ class App:
 
 
 def main():
-    root = tk.Tk()
-    app = App(root)
-    root.mainloop()
+    try:
+        logging.info('main() starting GUI')
+        root = tk.Tk()
+        app = App(root)
+        logging.info('Entering mainloop')
+        root.mainloop()
+        logging.info('mainloop exited')
+    except Exception as e:
+        logging.exception('Application failed to start')
+        # If running as a frozen app, show an error dialog before exiting
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror('Error', f'Application failed to start:\n{e}\nSee log: {LOGFILE}')
+        except Exception:
+            print('Application failed to start:', e)
+            if LOGFILE:
+                print('See log file:', LOGFILE)
+        sys.exit(1)
 
 
 if __name__ == '__main__':

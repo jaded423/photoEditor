@@ -7,11 +7,34 @@ Processes both photos (background removal) and videos (banner addition) from raw
 import os
 import sys
 from pathlib import Path
+import importlib.util
+import importlib.machinery
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import argparse
 import io
-import cv2
+# Special handling for OpenCV when running as a PyInstaller bundle.
+try:
+    if getattr(sys, 'frozen', False):
+        # Look for a cv2 extension (.so) inside the bundle and load it directly to avoid
+        # recursion problems that sometimes occur with the cv2 package in frozen apps.
+        meipass = Path(getattr(sys, '_MEIPASS', Path.cwd()))
+        so_candidates = list(meipass.rglob('cv2*.so'))
+        if so_candidates:
+            so_path = str(so_candidates[0])
+            loader = importlib.machinery.ExtensionFileLoader('cv2', so_path)
+            spec = importlib.util.spec_from_loader('cv2', loader)
+            cv2 = importlib.util.module_from_spec(spec)
+            loader.exec_module(cv2)
+            sys.modules['cv2'] = cv2
+        else:
+            # Fallback to normal import if we didn't find the binary
+            import cv2
+    else:
+        import cv2
+except Exception:
+    # If loading fails, re-raise with additional context
+    raise
 
 # Photo processing imports
 try:
@@ -72,9 +95,17 @@ def add_banner_to_frame(frame, filename, banner_height=120):
     # Prepare text (filename in caps without extension)
     text = filename.upper()
     
-    # Look for Inter font file in the same directory as the script
-    script_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else os.getcwd()
-    bundled_font_path = os.path.join(script_dir, "Inter-Bold.ttf")
+    # Look for Inter font file in the same directory as the script.
+    # When running as a PyInstaller bundle, resources are unpacked to sys._MEIPASS.
+    try:
+        if getattr(sys, 'frozen', False):
+            script_dir = Path(sys._MEIPASS)
+        else:
+            script_dir = Path(__file__).resolve().parent
+    except Exception:
+        script_dir = Path.cwd()
+
+    bundled_font_path = script_dir / "Inter-Bold.ttf"
     
     # Calculate target font size based on banner height and text length
     base_font_size = int(banner_height * 0.8)  # 80% of banner height
@@ -90,10 +121,10 @@ def add_banner_to_frame(frame, filename, banner_height=120):
     
     try:
         # First try the bundled font
-        if os.path.exists(bundled_font_path):
+        if bundled_font_path and bundled_font_path.exists():
             for font_size in font_sizes_to_try:
                 try:
-                    test_font = ImageFont.truetype(bundled_font_path, font_size)
+                    test_font = ImageFont.truetype(str(bundled_font_path), font_size)
                     # Test if text fits in banner
                     test_bbox = overlay_draw.textbbox((0, 0), text, font=test_font)
                     text_width = test_bbox[2] - test_bbox[0]
