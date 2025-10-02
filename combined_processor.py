@@ -510,6 +510,18 @@ def process_photo(input_path, output_path):
         img_array = np.array(img)
         img_array = smart_resize_1000x1000(img_array)
         
+        # Save a copy for pendingProducts before adding the banner
+        try:
+            pending_products_path = Path(output_path).parent.parent / "pendingProducts"
+            pending_products_path.mkdir(exist_ok=True) # Ensure it exists
+            pending_product_file = pending_products_path / f"{original_filename}.png"
+            
+            img_for_product = Image.fromarray(img_array, 'RGBA')
+            img_for_product.save(pending_product_file, format='PNG')
+            print(f"Saved banner-free version to: {pending_product_file}")
+        except Exception as e:
+            print(f"Warning: Could not save to pendingProducts folder: {e}")
+
         # Add filename banner
         print("Adding filename banner...")
         img_array = add_photo_banner(img_array, original_filename)
@@ -541,9 +553,13 @@ def process_media_batch(raw_dir, progress_callback=None, stop_event=None):
     # Create output directories
     edited_dir = raw_path / "edited"
     original_dir = raw_path / "original"
+    pending_products_dir = raw_path / "pendingProducts"
+    
     edited_dir.mkdir(exist_ok=True)
     original_dir.mkdir(exist_ok=True)
+    pending_products_dir.mkdir(exist_ok=True)
     
+
     # File extensions
     photo_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif', '.webp', '.heic', '.heif']
     video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm', '.m4v']
@@ -704,6 +720,7 @@ if __name__ == "__main__":
         print("\nOutput structure:")
         print("raw/edited/    - processed files")
         print("raw/original/  - original files")
+        print("raw/pendingProducts/  - online product files")
         print("\nNote: Install required libraries:")
         print("pip3 install opencv-python pillow")
         print("pip3 install rembg scipy numpy  # for photo processing")
