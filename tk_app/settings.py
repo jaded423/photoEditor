@@ -29,6 +29,8 @@ def load_settings():
         logging.info("Settings file not found. Using defaults.")
         return {
             'webhook_url': '',
+            'api_key': '',
+            'api_key_header': 'Authorization',
             'default_raw_folder': str(Path.home() / 'Downloads')
         }
 
@@ -39,7 +41,12 @@ def load_settings():
             return settings
     except (json.JSONDecodeError, IOError) as e:
         logging.error(f"Could not read settings file {settings_file}: {e}. Using defaults.")
-        return {'webhook_url': '', 'default_raw_folder': str(Path.home() / 'Downloads')}
+        return {
+            'webhook_url': '',
+            'api_key': '',
+            'api_key_header': 'Authorization',
+            'default_raw_folder': str(Path.home() / 'Downloads')
+        }
 
 
 def save_settings(settings):

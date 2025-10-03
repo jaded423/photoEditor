@@ -18,8 +18,9 @@ if getattr(sys, 'frozen', False):
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from combined_processor import process_media_batch, send_webhook
 from tk_app.settings import load_settings, save_settings
+from network_utils import send_webhook
+from combined_processor import process_media_batch
 
 
 # Setup logging early so we capture import/startup errors
@@ -50,31 +51,19 @@ LOGFILE = setup_logging()
 
 
 class ProcessorThread(threading.Thread):
-    def __init__(self, folder, progress_queue, stop_event, webhook_url):
+    def __init__(self, folder, progress_queue, stop_event, webhook_url, api_key, api_key_header):
         super().__init__()
         self.folder = folder
         self.progress_queue = progress_queue
         self.stop_event = stop_event
         self.webhook_url = webhook_url
-
-    def start(self):
-        logging.info('ProcessorThread.start() called for folder: %s', self.folder)
-        super().start()
+        self.api_key = api_key
+        self.api_key_header = api_key_header
 
     def run(self):
         logging.info('ProcessorThread.run() beginning for folder: %s', self.folder)
         def cb(processed_count, total_files, filename, message):
-            # Put progress updates into the queue for the main thread
-            if filename and "Processed" in message:
-                try:
-                    payload = {
-                        'file': filename,
-                        'status': 'success',
-                        'message': message
-                    }
-                    send_webhook(self.webhook_url, payload)
-                except Exception as e:
-                    logging.error(f"Failed to send webhook: {e}")
+            # Put progress updates into the queue for the main UI thread
             self.progress_queue.put((processed_count, total_files, filename, message))
 
         try:
@@ -109,15 +98,25 @@ class SettingsWindow(tk.Toplevel):
         self.webhook_var = tk.StringVar(value=self.app.settings.get('webhook_url', ''))
         ttk.Entry(frm, textvariable=self.webhook_var, width=60).grid(column=0, row=1, columnspan=2, sticky='we')
 
+        # API Key
+        ttk.Label(frm, text="API Key:").grid(column=0, row=2, sticky='w', pady=(10, 0))
+        self.api_key_var = tk.StringVar(value=self.app.settings.get('api_key', ''))
+        ttk.Entry(frm, textvariable=self.api_key_var, width=60, show='*').grid(column=0, row=3, columnspan=2, sticky='we')
+
+        # API Key Header
+        ttk.Label(frm, text="API Key Header Name:").grid(column=0, row=4, sticky='w', pady=(10, 0))
+        self.api_key_header_var = tk.StringVar(value=self.app.settings.get('api_key_header', 'Authorization'))
+        ttk.Entry(frm, textvariable=self.api_key_header_var, width=60).grid(column=0, row=5, columnspan=2, sticky='we')
+
         # Default Raw Folder
-        ttk.Label(frm, text="Default Raw Folder:").grid(column=0, row=2, sticky='w', pady=(10, 0))
+        ttk.Label(frm, text="Default Raw Folder:").grid(column=0, row=6, sticky='w', pady=(10, 0))
         self.folder_var = tk.StringVar(value=self.app.settings.get('default_raw_folder', ''))
-        ttk.Entry(frm, textvariable=self.folder_var, width=60).grid(column=0, row=3, sticky='we')
-        ttk.Button(frm, text="Browse...", command=self.browse_default_folder).grid(column=1, row=3, sticky='e', padx=(5, 0))
+        ttk.Entry(frm, textvariable=self.folder_var, width=60).grid(column=0, row=7, sticky='we')
+        ttk.Button(frm, text="Browse...", command=self.browse_default_folder).grid(column=1, row=7, sticky='e', padx=(5, 0))
 
         # Action Buttons
         btn_frm = ttk.Frame(frm)
-        btn_frm.grid(column=0, row=4, columnspan=2, pady=(15, 0), sticky='e')
+        btn_frm.grid(column=0, row=8, columnspan=2, pady=(15, 0), sticky='e')
         ttk.Button(btn_frm, text="Save", command=self.save_and_close).pack(side='right', padx=(5, 0))
         ttk.Button(btn_frm, text="Cancel", command=self.destroy).pack(side='right')
 
@@ -128,6 +127,8 @@ class SettingsWindow(tk.Toplevel):
 
     def save_and_close(self):
         self.app.settings['webhook_url'] = self.webhook_var.get().strip()
+        self.app.settings['api_key'] = self.api_key_var.get().strip()
+        self.app.settings['api_key_header'] = self.api_key_header_var.get().strip()
         self.app.settings['default_raw_folder'] = self.folder_var.get().strip()
         save_settings(self.app.settings)
         self.app.apply_settings()
@@ -172,10 +173,27 @@ class App:
         self.status_text = tk.Text(frm, height=8, width=80, state='disabled')
         self.status_text.grid(column=0, row=5, columnspan=3, pady=8)
 
+        # Add button "Create Products" that will call the webhook
+        ttk.Button(frm, text="Create Products", command=self.trigger_create_products_webhook).grid(column=0, row=6, columnspan=3, pady=8)
+
+        
         self.worker = None
         self.stop_event = None
         self.root.after(200, self.poll_queue)
         logging.info('App.__init__ completed')
+
+    def trigger_create_products_webhook(self):
+        """Calls the webhook and shows a status message to the user."""
+        url = self.settings.get('webhook_url', '')
+        api_key = self.settings.get('api_key', '')
+        api_key_header = self.settings.get('api_key_header', 'Authorization')
+
+        success, message = send_webhook(url, {}, api_key=api_key, api_key_header=api_key_header)
+
+        if success:
+            messagebox.showinfo("Success", message)
+        else:
+            messagebox.showerror("Error", message)
 
     def browse_folder(self):
         initial_dir = self.folder_var.get() or self.settings.get('default_raw_folder') or Path.home()
@@ -206,7 +224,14 @@ class App:
 
         # Create a stop event for cooperative cancellation
         self.stop_event = threading.Event()
-        self.worker = ProcessorThread(folder, self.progress_queue, self.stop_event)
+        self.worker = ProcessorThread(
+            folder,
+            self.progress_queue,
+            self.stop_event,
+            webhook_url=self.settings.get('webhook_url'),
+            api_key=self.settings.get('api_key'),
+            api_key_header=self.settings.get('api_key_header')
+        )
         logging.info('Starting processor thread for folder: %s', folder)
         self.worker.start()
 
