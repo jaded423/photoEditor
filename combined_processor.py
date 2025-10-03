@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+import json
+from urllib import request, error
 Combined Media Processor
 Processes both photos (background removal) and videos (banner addition) from raw folder
 """
@@ -697,6 +699,34 @@ def process_media_batch(raw_dir, progress_callback=None, stop_event=None):
     print(f"Original files moved to: {original_dir}/")
 
 def main():
+    parser = argparse.ArgumentParser(description='Combined photo and video processor')
+    parser.add_argument('input_dir', help='Input directory containing raw photos and videos')
+    
+    args = parser.parse_args()
+    
+    try:
+        process_media_batch(args.input_dir)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        sys.exit(1)
+
+def send_webhook(url, payload):
+    """Sends a POST request with a JSON payload to the given URL."""
+    if not url:
+        return
+
+    try:
+        data = json.dumps(payload).encode('utf-8')
+        headers = {'Content-Type': 'application/json'}
+        req = request.Request(url, data=data, headers=headers)
+        with request.urlopen(req, timeout=10) as response:
+            if 200 <= response.status < 300:
+                print(f"Webhook sent successfully to {url}")
+            else:
+                print(f"Webhook failed with status {response.status}: {response.read().decode()}")
+    except (error.URLError, error.HTTPError, TimeoutError) as e:
+        print(f"Error sending webhook to {url}: {e}")
+
     parser = argparse.ArgumentParser(description='Combined photo and video processor')
     parser.add_argument('input_dir', help='Input directory containing raw photos and videos')
     

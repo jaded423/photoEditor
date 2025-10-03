@@ -18,7 +18,8 @@ if getattr(sys, 'frozen', False):
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from combined_processor import process_media_batch
+from combined_processor import process_media_batch, send_webhook
+from tk_app.settings import load_settings, save_settings
 
 
 # Setup logging early so we capture import/startup errors
@@ -49,11 +50,12 @@ LOGFILE = setup_logging()
 
 
 class ProcessorThread(threading.Thread):
-    def __init__(self, folder, progress_queue, stop_event):
+    def __init__(self, folder, progress_queue, stop_event, webhook_url):
         super().__init__()
         self.folder = folder
         self.progress_queue = progress_queue
         self.stop_event = stop_event
+        self.webhook_url = webhook_url
 
     def start(self):
         logging.info('ProcessorThread.start() called for folder: %s', self.folder)
@@ -63,6 +65,16 @@ class ProcessorThread(threading.Thread):
         logging.info('ProcessorThread.run() beginning for folder: %s', self.folder)
         def cb(processed_count, total_files, filename, message):
             # Put progress updates into the queue for the main thread
+            if filename and "Processed" in message:
+                try:
+                    payload = {
+                        'file': filename,
+                        'status': 'success',
+                        'message': message
+                    }
+                    send_webhook(self.webhook_url, payload)
+                except Exception as e:
+                    logging.error(f"Failed to send webhook: {e}")
             self.progress_queue.put((processed_count, total_files, filename, message))
 
         try:
@@ -80,6 +92,47 @@ class ProcessorThread(threading.Thread):
             logging.info('ProcessorThread.run() exiting for folder: %s', self.folder)
 
 
+class SettingsWindow(tk.Toplevel):
+    def __init__(self, parent):
+        # The Toplevel's master should be the root window from the App instance
+        super().__init__(parent.root)
+        self.app = parent  # Store the App instance for access to settings
+        self.title("Settings")
+        self.transient(parent.root)
+        self.grab_set()
+
+        frm = ttk.Frame(self, padding=12)
+        frm.grid(sticky='nsew')
+
+        # Webhook URL
+        ttk.Label(frm, text="Webhook URL:").grid(column=0, row=0, sticky='w')
+        self.webhook_var = tk.StringVar(value=self.app.settings.get('webhook_url', ''))
+        ttk.Entry(frm, textvariable=self.webhook_var, width=60).grid(column=0, row=1, columnspan=2, sticky='we')
+
+        # Default Raw Folder
+        ttk.Label(frm, text="Default Raw Folder:").grid(column=0, row=2, sticky='w', pady=(10, 0))
+        self.folder_var = tk.StringVar(value=self.app.settings.get('default_raw_folder', ''))
+        ttk.Entry(frm, textvariable=self.folder_var, width=60).grid(column=0, row=3, sticky='we')
+        ttk.Button(frm, text="Browse...", command=self.browse_default_folder).grid(column=1, row=3, sticky='e', padx=(5, 0))
+
+        # Action Buttons
+        btn_frm = ttk.Frame(frm)
+        btn_frm.grid(column=0, row=4, columnspan=2, pady=(15, 0), sticky='e')
+        ttk.Button(btn_frm, text="Save", command=self.save_and_close).pack(side='right', padx=(5, 0))
+        ttk.Button(btn_frm, text="Cancel", command=self.destroy).pack(side='right')
+
+    def browse_default_folder(self):
+        folder = filedialog.askdirectory(initialdir=self.folder_var.get() or Path.home())
+        if folder:
+            self.folder_var.set(folder)
+
+    def save_and_close(self):
+        self.app.settings['webhook_url'] = self.webhook_var.get().strip()
+        self.app.settings['default_raw_folder'] = self.folder_var.get().strip()
+        save_settings(self.app.settings)
+        self.app.apply_settings()
+        self.destroy()
+
 class App:
     def __init__(self, root):
         self.root = root
@@ -87,17 +140,24 @@ class App:
         logging.info('App.__init__ starting')
         self.progress_queue = queue.Queue()
 
+        self.settings = load_settings()
+
         frm = ttk.Frame(root, padding=12)
         frm.grid()
 
         ttk.Label(frm, text='Choose raw folder:').grid(column=0, row=0, sticky='w')
         self.folder_var = tk.StringVar()
+        self.apply_settings() # Set initial folder path
+
         folder_entry = ttk.Entry(frm, textvariable=self.folder_var, width=60)
         folder_entry.grid(column=0, row=1, columnspan=2, sticky='we', pady=6)
 
-        ttk.Button(frm, text='Browse', command=self.browse_folder).grid(column=2, row=1, sticky='e')
+        browse_btn_frm = ttk.Frame(frm)
+        browse_btn_frm.grid(column=2, row=1, sticky='e')
+        ttk.Button(browse_btn_frm, text='Browse', command=self.browse_folder).pack(side='left')
+        ttk.Button(browse_btn_frm, text='Settings', command=self.open_settings_window).pack(side='left', padx=(5, 0))
 
-        self.start_btn = ttk.Button(frm, text='Start Processing', command=self.start_processing)
+        self.start_btn = ttk.Button(frm, text='Start Processing Photos', command=self.start_processing)
         self.start_btn.grid(column=0, row=2, pady=8)
 
         self.stop_btn = ttk.Button(frm, text='Stop', command=self.stop_processing, state='disabled')
@@ -118,9 +178,19 @@ class App:
         logging.info('App.__init__ completed')
 
     def browse_folder(self):
-        folder = filedialog.askdirectory()
+        initial_dir = self.folder_var.get() or self.settings.get('default_raw_folder') or Path.home()
+        folder = filedialog.askdirectory(initialdir=str(initial_dir))
         if folder:
             self.folder_var.set(folder)
+
+    def open_settings_window(self):
+        SettingsWindow(self)
+
+    def apply_settings(self):
+        """Applies settings to the UI, e.g., setting the default folder."""
+        default_folder = self.settings.get('default_raw_folder')
+        if default_folder and Path(default_folder).is_dir():
+            self.folder_var.set(default_folder)
 
     def start_processing(self):
         folder = self.folder_var.get().strip()
