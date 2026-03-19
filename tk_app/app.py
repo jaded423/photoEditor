@@ -174,7 +174,7 @@ class App:
         self.status_text.grid(column=0, row=5, columnspan=3, pady=8)
 
         # Add button "Create Products" that will call the webhook
-        ttk.Button(frm, text="Create Products", command=self.trigger_create_products_webhook).grid(column=0, row=6, columnspan=3, pady=8)
+        ttk.Button(frm, text="Create Products (Elevated)", command=self.trigger_create_products_webhook).grid(column=0, row=6, columnspan=3, pady=8)
 
         
         self.worker = None
