@@ -137,7 +137,7 @@ class SettingsWindow(tk.Toplevel):
 class App:
     def __init__(self, root):
         self.root = root
-        root.title('Combined Processor - Tk')
+        root.title('PhotoEditor')
         logging.info('App.__init__ starting')
         self.progress_queue = queue.Queue()
 

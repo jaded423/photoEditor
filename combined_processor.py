@@ -367,90 +367,36 @@ def is_bulk_photo(image_path):
 
 
 def smart_resize_1000x1000(img_array):
-    """Intelligently resize image to 1000x1000 while maintaining aspect ratio and centering the subject."""
-    
-    # Find the bounding box of the flower (non-transparent pixels)
+    """Resize image to 1000x1000 with 50px border, cropped to subject and centered."""
+
     alpha = img_array[:, :, 3]
     y_coords, x_coords = np.where(alpha > 0)
-    
+
     if len(y_coords) == 0:
-        # If no flower found, just resize the whole image
         img = Image.fromarray(img_array, 'RGBA')
         return np.array(img.resize((1000, 1000), Image.Resampling.LANCZOS))
-    
-    # Check if this is likely a bulk/pile photo (high coverage)
-    total_pixels = alpha.size
-    non_transparent_pixels = len(y_coords)
-    coverage_ratio = non_transparent_pixels / total_pixels
-    
-    if coverage_ratio > 0.8:  # More than 80% coverage suggests bulk/pile photo
-        print("Detected bulk/pile photo - using full-image resize approach")
-        img = Image.fromarray(img_array, 'RGBA')
-        
-        available_height = 1000 - 160  # 840px available above banner
-        available_width = 1000
-        
-        original_height, original_width = img_array.shape[:2]
-        scale_factor = min(available_width / original_width, available_height / original_height)
-        
-        new_width = int(original_width * scale_factor)
-        new_height = int(original_height * scale_factor)
-        
-        resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-        
-        canvas = np.zeros((1000, 1000, 4), dtype=np.uint8)
-        
-        x_offset = (1000 - new_width) // 2
-        y_offset = (840 - new_height) // 2
-        
-        canvas[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = np.array(resized_img)
-        return canvas
-    
-    # For individual flower photos, use the original logic
+
+    # Crop to subject bounding box
     min_y, max_y = y_coords.min(), y_coords.max()
     min_x, max_x = x_coords.min(), x_coords.max()
-    flower_width = max_x - min_x
-    flower_height = max_y - min_y
-    
-    # Add padding around the flower
-    padding_factor = 0.15
-    h_padding = int(flower_height * padding_factor)
-    w_padding = int(flower_width * padding_factor)
-    
-    padded_min_y = max(0, min_y - h_padding)
-    padded_max_y = min(img_array.shape[0], max_y + h_padding)
-    padded_min_x = max(0, min_x - w_padding)
-    padded_max_x = min(img_array.shape[1], max_x + w_padding)
-    
-    flower_region = img_array[padded_min_y:padded_max_y, padded_min_x:padded_max_x]
-    flower_img = Image.fromarray(flower_region, 'RGBA')
-    
-    available_height = 1000 - 80 - 80
-    available_width = 1000
-    
-    region_width = flower_region.shape[1]
-    region_height = flower_region.shape[0]
-    
-    scale_factor = min(available_width / region_width, available_height / region_height)
-    
-    if scale_factor > 2.0:
-        scale_factor = 2.0
-    
-    new_width = int(region_width * scale_factor)
-    new_height = int(region_height * scale_factor)
-    
-    resized_flower = flower_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-    
+    subject = img_array[min_y:max_y, min_x:max_x]
+    subject_img = Image.fromarray(subject, 'RGBA')
+
+    # Scale to fill 900x900 (50px border on all sides)
+    border = 50
+    available = 1000 - (border * 2)
+    scale_factor = min(available / subject.shape[1], available / subject.shape[0])
+
+    new_width = int(subject.shape[1] * scale_factor)
+    new_height = int(subject.shape[0] * scale_factor)
+    resized = subject_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+    # Center on 1000x1000 canvas
     canvas = np.zeros((1000, 1000, 4), dtype=np.uint8)
-    
-    usable_area_height = 1000 - 160
-    
     x_offset = (1000 - new_width) // 2
-    y_offset = (usable_area_height - new_height) // 2
-    
-    resized_array = np.array(resized_flower)
-    canvas[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = resized_array
-    
+    y_offset = (1000 - new_height) // 2
+    canvas[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = np.array(resized)
+
     return canvas
 
 def process_photo(input_path, output_path):
