@@ -6,7 +6,7 @@ set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 VENV_DIR="$HERE/.venv-pyinstaller"
-APP_NAME="CombinedProcessor"
+APP_NAME="PhotoEditor"
 ENTRY_POINT="$HERE/tk_app/app.py"
 ICON_PATH="$HERE/Inter-Bold.ttf"  # not a real icon, but ensure font is included
 
@@ -39,8 +39,13 @@ DATA_ARGS=(
 # Add repo root to PyInstaller search path so imports from project root are discovered
 PY_PATH_ARGS=(--paths "$HERE")
 
+ICON_ARG=()
+if [[ -f "$HERE/PhotoEditor.icns" ]]; then
+  ICON_ARG=(--icon "$HERE/PhotoEditor.icns")
+fi
+
 pyinstaller --noconfirm --clean --windowed --name "$APP_NAME" \
-  "${PY_PATH_ARGS[@]}" "${DATA_ARGS[@]}" "$ENTRY_POINT"
+  "${ICON_ARG[@]}" "${PY_PATH_ARGS[@]}" "${DATA_ARGS[@]}" "$ENTRY_POINT"
 
 echo "Build complete. App bundle is in dist/${APP_NAME}.app"
 echo "Activate venv with: source ${VENV_DIR}/bin/activate" 

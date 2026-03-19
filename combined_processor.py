@@ -338,91 +338,65 @@ def add_photo_banner(img_array, filename, banner_height=80):
     
     return np.array(result_img)
 
+def is_bulk_photo(image_path):
+    """Detect if an image is a bulk/pile photo (product fills the entire frame).
+
+    Bulk photos have texture and detail across the entire image with no smooth
+    background regions. Single-subject photos have large uniform background areas.
+    Returns True if the image appears to be a bulk/pile photo.
+    """
+    img = Image.open(image_path).convert('L')  # Grayscale
+    # Downsample for speed
+    img = img.resize((400, 400), Image.Resampling.LANCZOS)
+    gray = np.array(img, dtype=np.float64)
+
+    # Compute local variance using a sliding window
+    window_size = 50
+    local_mean = ndimage.uniform_filter(gray, size=window_size)
+    local_sqr_mean = ndimage.uniform_filter(gray ** 2, size=window_size)
+    local_variance = local_sqr_mean - local_mean ** 2
+
+    # Smooth/uniform regions have very low local variance
+    smooth_ratio = np.sum(local_variance < 100) / local_variance.size
+
+    # True bulk/pile photos have ~0% smooth area (all texture, no background).
+    # Single-subject photos with blurred backgrounds still have 5%+ smooth area.
+    is_bulk = smooth_ratio < 0.03  # Less than 3% smooth area = bulk photo
+    print(f"Bulk photo detection: {smooth_ratio:.1%} smooth area -> {'BULK' if is_bulk else 'single subject'}")
+    return is_bulk
+
+
 def smart_resize_1000x1000(img_array):
-    """Intelligently resize image to 1000x1000 while maintaining aspect ratio and centering the subject."""
-    
-    # Find the bounding box of the flower (non-transparent pixels)
+    """Resize image to 1000x1000 with 50px border, cropped to subject and centered."""
+
     alpha = img_array[:, :, 3]
     y_coords, x_coords = np.where(alpha > 0)
-    
+
     if len(y_coords) == 0:
-        # If no flower found, just resize the whole image
         img = Image.fromarray(img_array, 'RGBA')
         return np.array(img.resize((1000, 1000), Image.Resampling.LANCZOS))
-    
-    # Check if this is likely a bulk/pile photo (high coverage)
-    total_pixels = alpha.size
-    non_transparent_pixels = len(y_coords)
-    coverage_ratio = non_transparent_pixels / total_pixels
-    
-    if coverage_ratio > 0.8:  # More than 80% coverage suggests bulk/pile photo
-        print("Detected bulk/pile photo - using full-image resize approach")
-        img = Image.fromarray(img_array, 'RGBA')
-        
-        available_height = 1000 - 160  # 840px available above banner
-        available_width = 1000
-        
-        original_height, original_width = img_array.shape[:2]
-        scale_factor = min(available_width / original_width, available_height / original_height)
-        
-        new_width = int(original_width * scale_factor)
-        new_height = int(original_height * scale_factor)
-        
-        resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-        
-        canvas = np.zeros((1000, 1000, 4), dtype=np.uint8)
-        
-        x_offset = (1000 - new_width) // 2
-        y_offset = (840 - new_height) // 2
-        
-        canvas[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = np.array(resized_img)
-        return canvas
-    
-    # For individual flower photos, use the original logic
+
+    # Crop to subject bounding box
     min_y, max_y = y_coords.min(), y_coords.max()
     min_x, max_x = x_coords.min(), x_coords.max()
-    flower_width = max_x - min_x
-    flower_height = max_y - min_y
-    
-    # Add padding around the flower
-    padding_factor = 0.15
-    h_padding = int(flower_height * padding_factor)
-    w_padding = int(flower_width * padding_factor)
-    
-    padded_min_y = max(0, min_y - h_padding)
-    padded_max_y = min(img_array.shape[0], max_y + h_padding)
-    padded_min_x = max(0, min_x - w_padding)
-    padded_max_x = min(img_array.shape[1], max_x + w_padding)
-    
-    flower_region = img_array[padded_min_y:padded_max_y, padded_min_x:padded_max_x]
-    flower_img = Image.fromarray(flower_region, 'RGBA')
-    
-    available_height = 1000 - 80 - 80
-    available_width = 1000
-    
-    region_width = flower_region.shape[1]
-    region_height = flower_region.shape[0]
-    
-    scale_factor = min(available_width / region_width, available_height / region_height)
-    
-    if scale_factor > 2.0:
-        scale_factor = 2.0
-    
-    new_width = int(region_width * scale_factor)
-    new_height = int(region_height * scale_factor)
-    
-    resized_flower = flower_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-    
+    subject = img_array[min_y:max_y, min_x:max_x]
+    subject_img = Image.fromarray(subject, 'RGBA')
+
+    # Scale to fill 900x900 (50px border on all sides)
+    border = 50
+    available = 1000 - (border * 2)
+    scale_factor = min(available / subject.shape[1], available / subject.shape[0])
+
+    new_width = int(subject.shape[1] * scale_factor)
+    new_height = int(subject.shape[0] * scale_factor)
+    resized = subject_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+    # Center on 1000x1000 canvas
     canvas = np.zeros((1000, 1000, 4), dtype=np.uint8)
-    
-    usable_area_height = 1000 - 160
-    
     x_offset = (1000 - new_width) // 2
-    y_offset = (usable_area_height - new_height) // 2
-    
-    resized_array = np.array(resized_flower)
-    canvas[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = resized_array
-    
+    y_offset = (1000 - new_height) // 2
+    canvas[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = np.array(resized)
+
     return canvas
 
 def process_photo(input_path, output_path):
@@ -437,24 +411,27 @@ def process_photo(input_path, output_path):
     # Get original filename without extension
     original_filename = Path(input_path).stem
     
-    # Check if filename starts with "Smalls" to skip background removal
+    # Check if background removal should be skipped
     filename_starts_with_smalls = original_filename.lower().startswith('smalls')
-    
+    detected_bulk = is_bulk_photo(input_path)
+    skip_bg_removal = filename_starts_with_smalls or detected_bulk
+
     try:
         # Read input image data
         with open(input_path, 'rb') as input_file:
             input_data = input_file.read()
-        
-        # Skip background removal for files starting with "Smalls"
-        if filename_starts_with_smalls:
-            print("Skipping background removal for Smalls file - using original image")
+
+        # Skip background removal for bulk/pile photos and Smalls
+        if skip_bg_removal:
+            reason = "Smalls file" if filename_starts_with_smalls else "bulk/pile photo detected"
+            print(f"Skipping background removal - {reason} - using original image")
             original_img = Image.open(input_path).convert('RGBA')
             output_buffer = io.BytesIO()
             original_img.save(output_buffer, format='PNG')
             output_data = output_buffer.getvalue()
         else:
             # Create session with specified model
-            session = new_session('isnet-general-use')
+            session = new_session('birefnet-general')
             
             # Remove background
             output_data = remove(input_data, session=session)
@@ -483,30 +460,82 @@ def process_photo(input_path, output_path):
         alpha = img_array[:, :, 3]
         
         # Find connected components
-        labeled_array, num_features = ndimage.label(alpha > 128)
-        
+        labeled_array, num_features = ndimage.label(alpha > 30)
+
         if num_features > 1:
             component_sizes = np.bincount(labeled_array.ravel())
             largest_component = np.argmax(component_sizes[1:]) + 1
-            main_object_mask = (labeled_array == largest_component)
-            
+
+            # Find the bounding box of the main subject
+            main_ys, main_xs = np.where(labeled_array == largest_component)
+            main_bbox = (main_ys.min(), main_ys.max(), main_xs.min(), main_xs.max())
+            # Expand bounding box by 20% to include nearby scattered pieces
+            bbox_h = main_bbox[1] - main_bbox[0]
+            bbox_w = main_bbox[3] - main_bbox[2]
+            expand_y = int(bbox_h * 0.2)
+            expand_x = int(bbox_w * 0.2)
+            near_y_min = max(0, main_bbox[0] - expand_y)
+            near_y_max = min(alpha.shape[0], main_bbox[1] + expand_y)
+            near_x_min = max(0, main_bbox[2] - expand_x)
+            near_x_max = min(alpha.shape[1], main_bbox[3] + expand_x)
+
+            # Keep: the main component + any component near the main subject
+            # Remove: only small isolated fragments far from the subject
+            min_component_size = int(alpha.size * 0.001)
+            subject_mask = np.zeros_like(alpha, dtype=bool)
+            kept = 0
+            removed = 0
+            for i in range(1, num_features + 1):
+                if i == largest_component:
+                    subject_mask |= (labeled_array == i)
+                    kept += 1
+                elif component_sizes[i] >= min_component_size:
+                    # Large enough to keep
+                    subject_mask |= (labeled_array == i)
+                    kept += 1
+                else:
+                    # Small fragment - keep if near the main subject, remove if isolated
+                    comp_ys, comp_xs = np.where(labeled_array == i)
+                    near_main = (comp_ys.min() <= near_y_max and comp_ys.max() >= near_y_min and
+                                 comp_xs.min() <= near_x_max and comp_xs.max() >= near_x_min)
+                    if near_main:
+                        subject_mask |= (labeled_array == i)
+                        kept += 1
+                    else:
+                        removed += 1
+
             from scipy.ndimage import binary_closing, binary_opening
-            main_object_mask = binary_closing(main_object_mask, structure=np.ones((3,3)))
-            main_object_mask = binary_opening(main_object_mask, structure=np.ones((2,2)))
-            
-            alpha_cleaned = alpha * main_object_mask.astype(np.uint8)
+            subject_mask = binary_closing(subject_mask, structure=np.ones((3,3)))
+            subject_mask = binary_opening(subject_mask, structure=np.ones((2,2)))
+
+            # Apply mask: zero out rejected fragments, boost kept pixels to fully opaque.
+            # rembg often gives partial transparency to valid subject areas that look washed out.
+            alpha_cleaned = np.where(subject_mask, 255, 0).astype(np.uint8)
             img_array[:, :, 3] = alpha_cleaned
-            
+
             img_cleaned = Image.fromarray(img_array, 'RGBA')
             output_buffer = io.BytesIO()
             img_cleaned.save(output_buffer, format='PNG')
             output_data = output_buffer.getvalue()
-            
-            print(f"Removed {num_features - 1} small objects")
-        
+
+            print(f"Kept {kept} subject components, removed {removed} distant fragments")
+
+            # Re-check coverage after cleanup - if too little remains, fall back to original
+            # Destroyed images (e.g. bulk photos that slipped past detection) end up < 1%.
+            # Legitimate single-subject photos can be 15-30% coverage, so keep threshold low.
+            alpha_after = img_array[:, :, 3]
+            cleanup_coverage = np.sum(alpha_after > 0) / alpha_after.size
+            print(f"Coverage after cleanup: {cleanup_coverage:.1%}")
+
+            if cleanup_coverage < 0.05:
+                print("Warning: Background removal destroyed the image. Falling back to original.")
+                img = Image.open(input_path).convert('RGBA')
+                img_array = np.array(img)
+            else:
+                img = img_cleaned
+
         # Apply 1000x1000 smart resize
         print("Creating 1000x1000 smart resize...")
-        img = Image.open(io.BytesIO(output_data)).convert('RGBA')
         img_array = np.array(img)
         img_array = smart_resize_1000x1000(img_array)
         
@@ -701,12 +730,6 @@ def main():
     parser.add_argument('input_dir', help='Input directory containing raw photos and videos')
     
     args = parser.parse_args()
-    
-    try:
-        process_media_batch(args.input_dir)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        sys.exit(1)
     
     try:
         process_media_batch(args.input_dir)
