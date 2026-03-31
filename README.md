@@ -6,7 +6,7 @@ PhotoEditor is distributed as a standalone Mac application. Because it is not pu
 
 ## Step 1: Download
 
-Download **PhotoEditor.zip** from the shared Google Drive link. Your browser will warn that the file is too large for Google to scan for viruses.
+Download **PhotoEditor.zip** from the shared [Google Drive](https://drive.google.com/file/d/1Mest4vtJfsJoTWyUeXFRG2bLFWaLvwVZ/view?usp=sharing). Your browser will warn that the file is too large for Google to scan for viruses.
 
 Click **"Download anyway"** to proceed.
 

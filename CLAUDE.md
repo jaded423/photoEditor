@@ -1,0 +1,74 @@
+# PhotoEditor
+
+Batch photo and video processor for product photography. Removes backgrounds, resizes to 1000x1000, and adds filename banners.
+
+## Repository
+
+- **Org:** Elevated-Trading-LLC
+- **Remote:** `git@github.com:Elevated-Trading-LLC/photoEditor.git`
+- **Branch convention:** Feature branches with PRs to `main`
+
+## Architecture
+
+```
+photoEditor/
+├── combined_processor.py    # Core processing engine
+├── network_utils.py         # Webhook HTTP client
+├── tk_app/
+│   ├── app.py               # Tkinter GUI
+│   └── settings.py          # JSON settings (~Library/Application Support/CombinedProcessor/)
+├── build_app.sh             # PyInstaller build script
+├── PhotoEditor.icns         # App icon
+├── Inter-Bold.ttf           # Bundled banner font
+└── requirements.txt         # Python dependencies (37 packages)
+```
+
+## Processing Pipeline
+
+1. **Bulk detection** (`is_bulk_photo()`): Analyzes local variance — bulk photos (0% smooth) skip background removal
+2. **Background removal**: `rembg` with `birefnet-general` model. Smalls prefix also skips removal.
+3. **Component cleanup**: Keeps all components near main subject, removes only small distant fragments. Alpha > 30 threshold, pixels boosted to full opacity.
+4. **Post-cleanup safety net**: Falls back to original if coverage < 5%
+5. **Smart resize**: Crops to subject bounding box, scales to 900x900 (50px border), centered on 1000x1000 canvas
+6. **Outputs**: `pendingProducts/` (no banner), `edited/` (with banner), `original/` (source moved here)
+
+## Photo Types Handled
+
+| Type | Example | Behavior |
+|------|---------|----------|
+| Single subject | Hand-held flower, jar on white bg | Full pipeline: bg removal + resize |
+| Bulk/pile | Smalls, Exotic Mids (product fills frame) | Skip bg removal, resize only |
+| Middle ground | Jar with scattered product | Full pipeline, keeps scattered pieces |
+
+## Building
+
+```bash
+./build_app.sh           # Build dist/PhotoEditor.app
+./build_app.sh --clean   # Clean all build artifacts first
+```
+
+Requires Python 3.13 at `/Library/Frameworks/Python.framework/Versions/3.13/`. Build creates a venv at `.venv-pyinstaller`.
+
+## Distribution
+
+- **Not code-signed** — recipients must run `xattr -cr PhotoEditor.app` after downloading
+- $99/year Apple Developer ID needed for frictionless distribution (not yet set up)
+
+## Key Dependencies
+
+- `rembg` + `onnxruntime` — background removal (BiRefNet model, ~500MB, downloads to `~/.u2net/`)
+- `opencv-python` — video processing
+- `scipy` — connected component analysis, bulk photo detection
+- `pillow` + `pillow-heif` — image handling including iPhone HEIC
+
+## Settings
+
+Stored at `~/Library/Application Support/CombinedProcessor/settings.json`:
+- `webhook_url` — POST endpoint for product creation (Elevated only)
+- `api_key` — Authentication key (stored plaintext)
+- `api_key_header` — Header name (default: "Authorization")
+- `default_raw_folder` — Last used input folder
+
+## Changelog
+
+See [docs/changelog.md](docs/changelog.md)
