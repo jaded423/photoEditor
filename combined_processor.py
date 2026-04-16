@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 import importlib.util
 import importlib.machinery
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 import numpy as np
 import argparse
 import io
@@ -338,34 +338,6 @@ def add_photo_banner(img_array, filename, banner_height=80):
     
     return np.array(result_img)
 
-def is_bulk_photo(image_path):
-    """Detect if an image is a bulk/pile photo (product fills the entire frame).
-
-    Bulk photos have texture and detail across the entire image with no smooth
-    background regions. Single-subject photos have large uniform background areas.
-    Returns True if the image appears to be a bulk/pile photo.
-    """
-    img = Image.open(image_path).convert('L')  # Grayscale
-    # Downsample for speed
-    img = img.resize((400, 400), Image.Resampling.LANCZOS)
-    gray = np.array(img, dtype=np.float64)
-
-    # Compute local variance using a sliding window
-    window_size = 50
-    local_mean = ndimage.uniform_filter(gray, size=window_size)
-    local_sqr_mean = ndimage.uniform_filter(gray ** 2, size=window_size)
-    local_variance = local_sqr_mean - local_mean ** 2
-
-    # Smooth/uniform regions have very low local variance
-    smooth_ratio = np.sum(local_variance < 100) / local_variance.size
-
-    # True bulk/pile photos have ~0% smooth area (all texture, no background).
-    # Single-subject photos with blurred backgrounds still have 5%+ smooth area.
-    is_bulk = smooth_ratio < 0.03  # Less than 3% smooth area = bulk photo
-    print(f"Bulk photo detection: {smooth_ratio:.1%} smooth area -> {'BULK' if is_bulk else 'single subject'}")
-    return is_bulk
-
-
 def smart_resize_1000x1000(img_array):
     """Resize image to 1000x1000 with 50px border, cropped to subject and centered."""
 
@@ -411,41 +383,48 @@ def process_photo(input_path, output_path):
     # Get original filename without extension
     original_filename = Path(input_path).stem
     
-    # Check if background removal should be skipped
+    # Skip bg removal for explicit bulk prefixes (user-declared piles).
+    # True bulk photos are also caught post-hoc by the coverage check below.
     filename_starts_with_smalls = original_filename.lower().startswith('smalls')
-    detected_bulk = is_bulk_photo(input_path)
-    skip_bg_removal = filename_starts_with_smalls or detected_bulk
 
     try:
-        # Read input image data
-        with open(input_path, 'rb') as input_file:
-            input_data = input_file.read()
+        # Read input image data, honoring EXIF orientation so rotated phone photos
+        # (iPhone/Samsung save landscape pixels + rotate flag) flow through the
+        # pipeline upright. Re-encoded as PNG to drop the EXIF tag; rembg and
+        # cv2 downstream don't honor orientation on their own.
+        with Image.open(input_path) as pil_src:
+            oriented = ImageOps.exif_transpose(pil_src)
+            buf = io.BytesIO()
+            oriented.convert('RGB').save(buf, format='PNG')
+            input_data = buf.getvalue()
 
-        # Skip background removal for bulk/pile photos and Smalls
-        if skip_bg_removal:
-            reason = "Smalls file" if filename_starts_with_smalls else "bulk/pile photo detected"
-            print(f"Skipping background removal - {reason} - using original image")
-            original_img = Image.open(input_path).convert('RGBA')
+        if filename_starts_with_smalls:
+            print("Skipping background removal - Smalls file - using original image")
+            original_img = Image.open(io.BytesIO(input_data)).convert('RGBA')
             output_buffer = io.BytesIO()
             original_img.save(output_buffer, format='PNG')
             output_data = output_buffer.getvalue()
         else:
-            # Create session with specified model
             session = new_session('birefnet-general')
-            
-            # Remove background
             output_data = remove(input_data, session=session)
-            
-            # Check if background removal worked
+
+            # Inspect rembg's result to decide what to do.
+            # - coverage < 5%: rembg destroyed the image → fall back to original
+            # - coverage > 85%: no clear subject (true bulk/pile) → use original
+            # - otherwise: trust the mask
             img_test = Image.open(io.BytesIO(output_data)).convert('RGBA')
-            img_test_array = np.array(img_test)
-            alpha_test = img_test_array[:, :, 3]
-            non_transparent_pixels = np.sum(alpha_test > 0)
-            total_pixels = alpha_test.size
-            coverage_ratio = non_transparent_pixels / total_pixels
-            
+            alpha_test = np.array(img_test)[:, :, 3]
+            coverage_ratio = np.sum(alpha_test > 0) / alpha_test.size
+            print(f"rembg coverage: {coverage_ratio:.1%}")
+
             if coverage_ratio < 0.05:
                 print("Warning: Background removal removed everything. Using original image.")
+                original_img = Image.open(io.BytesIO(input_data)).convert('RGBA')
+                output_buffer = io.BytesIO()
+                original_img.save(output_buffer, format='PNG')
+                output_data = output_buffer.getvalue()
+            elif coverage_ratio > 0.85:
+                print("Bulk/pile photo detected (rembg kept >85%) - using original image")
                 original_img = Image.open(io.BytesIO(input_data)).convert('RGBA')
                 output_buffer = io.BytesIO()
                 original_img.save(output_buffer, format='PNG')
@@ -529,7 +508,7 @@ def process_photo(input_path, output_path):
 
             if cleanup_coverage < 0.05:
                 print("Warning: Background removal destroyed the image. Falling back to original.")
-                img = Image.open(input_path).convert('RGBA')
+                img = Image.open(io.BytesIO(input_data)).convert('RGBA')
                 img_array = np.array(img)
             else:
                 img = img_cleaned

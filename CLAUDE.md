@@ -25,8 +25,8 @@ photoEditor/
 
 ## Processing Pipeline
 
-1. **Bulk detection** (`is_bulk_photo()`): Analyzes local variance — bulk photos (0% smooth) skip background removal
-2. **Background removal**: `rembg` with `birefnet-general` model. Smalls prefix also skips removal.
+1. **Background removal**: `rembg` with `birefnet-general` model. Smalls filename prefix skips removal.
+2. **Post-rembg bulk detection**: If rembg kept >85% coverage, treat as a bulk/pile and use the original (no clear subject found). <5% coverage falls back to original too.
 3. **Component cleanup**: Keeps all components near main subject, removes only small distant fragments. Alpha > 30 threshold, pixels boosted to full opacity.
 4. **Post-cleanup safety net**: Falls back to original if coverage < 5%
 5. **Smart resize**: Crops to subject bounding box, scales to 900x900 (50px border), centered on 1000x1000 canvas

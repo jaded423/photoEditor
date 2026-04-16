@@ -6,6 +6,34 @@ Format: Each entry includes date, summary, and details.
 
 ---
 
+## 2026-04-14 - Fix Sideways Photos and Bulk Misclassification
+
+**What changed:**
+- Added `ImageOps.exif_transpose()` at every `Image.open` site in `combined_processor.py`. Input bytes are re-encoded as PNG at read time so the rotation is baked in before `rembg` / `cv2` see them (neither library honors EXIF on its own).
+- Replaced the variance-based `is_bulk_photo()` pre-classifier with a post-rembg coverage check. Always runs rembg (except `Smalls` filename fast-path); decides based on the resulting mask:
+  - `coverage > 85%` → no clear subject, treat as bulk pile, use original
+  - `coverage < 5%` → rembg destroyed the image, fall back to original
+  - otherwise → trust the mask
+- Deleted dead `is_bulk_photo()` function and its `scipy.ndimage` variance code.
+- Updated processing-pipeline section in `CLAUDE.md` to describe the new flow.
+
+**Why:**
+- User reported product photos coming out sideways. Root cause: iPhone/Samsung cameras save landscape pixels + EXIF orientation=6 (rotate 90° CW). Finder/Photos/browsers honor the flag; the processor was reading raw pixels and feeding them straight to rembg.
+- After the rotation fix, 4 of 5 photos still came back with background intact. Root cause: `is_bulk_photo()` was misclassifying hand-held bud photos as bulk because the jar-of-buds background has the same texture density as the subject. Measured smooth ratios 0.4%–2.5% (all under the 3% threshold); only one photo with a smaller subject passed at 4.1%.
+- rembg itself handles these photos perfectly (25%–45% coverage on the 5 test cases). Using its output as ground truth eliminates the flaky heuristic.
+
+**Files modified:**
+- `combined_processor.py` - Added `ImageOps` import; `exif_transpose` at read; pipeline rewrite in `process_photo`; removed `is_bulk_photo`
+- `CLAUDE.md` - Updated processing-pipeline bullet list
+
+**Technical notes:**
+- Verified on `/tmp/photoEditor-test/in/` (5 JPGs from Apr 16 run): all 5 now come out upright with clean white backgrounds, coverage 25.5%–44.8%.
+- `Smalls` filename prefix is still a user-declared fast-path skip.
+- MOV pipeline unchanged — `.mov` files weren't rotated sideways (the rotation atom is either absent or handled correctly by cv2 in this codebase's usage). User's "missing MOVs" concern was a false alarm — all 5 from the affected batch were in `edited/`; the `_1`/`_2` suffix mismatch between `edited/` and `originals/` comes from the rename-on-move collision logic, not a processing failure.
+- App rebuilt clean via `./build_app.sh`.
+
+---
+
 ## 2026-03-19 - Photo Quality Overhaul and App Rename
 
 **What changed:**

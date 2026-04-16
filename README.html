@@ -96,9 +96,18 @@ ul.toc { list-style: none; padding-left: 1rem; }
 ul.toc li { margin: 0.4rem 0; }
 ul.toc li::before { content: "> "; color: #50fa7b; }
 ul.toc a { color: #89b4fa; }
+@page {
+  size: Letter;
+  margin: 0;
+  background: #000000;
+}
 @media print {
-  body { background: #141420; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  h2 { background: #50fa7b !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { background: #000000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { padding: 0.5in 0.6in; max-width: none; margin: 0; }
+  h2 { background: #50fa7b !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; break-inside: avoid; break-after: avoid; }
+  h3 { break-inside: avoid; break-after: avoid; }
+  h1, h2, h3 + p, h2 + p, h3 + ul, h3 + ol, h2 + ul, h2 + ol { break-inside: avoid; }
+  img, pre, blockquote, table { break-inside: avoid; page-break-inside: avoid; }
   tr.even { background: #0d0d16 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   th { background: #1e1e2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   blockquote { background: #1e1e2e !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
