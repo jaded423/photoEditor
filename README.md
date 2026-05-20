@@ -150,14 +150,6 @@ Same approach behind everything at [jadedviber.com](https://jadedviber.com).
 
 ---
 
-## 💀 Blame my existence on
-
-- [**danielgatis**](https://github.com/danielgatis/rembg) — `rembg` itself. The whole pipeline orbits around it
-- The **birefnet** team — `birefnet-general` model handles a much wider range of product shots than `u2net` ever did
-- [**Anthropic**](https://www.anthropic.com/) — for Claude being the development partner that pair-coded the bulk-detection heuristic when I was about to give up
-
----
-
 ## 🐛 Troubleshooting
 
 | Issue | Fix |
