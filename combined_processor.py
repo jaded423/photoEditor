@@ -58,9 +58,9 @@ except ImportError as e:
 else:
     PHOTO_PROCESSING_AVAILABLE = True
 
-def add_banner_to_frame(frame, filename, banner_height=120):
+def add_banner_to_frame(frame, filename, banner_height=80):
     """
-    Add a black banner at the top of a video frame with filename in white text.
+    Add a black banner near the bottom of a video frame with filename in white text.
     
     Args:
         frame: OpenCV frame (BGR format)
@@ -82,9 +82,12 @@ def add_banner_to_frame(frame, filename, banner_height=120):
     overlay = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     overlay_draw = ImageDraw.Draw(overlay)
     
-    # Calculate banner position (360px from top)
-    banner_start_y = 360
-    banner_end_y = banner_start_y + banner_height
+    # Calculate banner position (80 pixels up from bottom, matching the photo
+    # banner). Anchored to the bottom and proportional to frame height so it can
+    # never land in the middle of the product regardless of video resolution or
+    # orientation. The old fixed 360px-from-top offset broke on shorter frames.
+    banner_start_y = height - banner_height - 80
+    banner_end_y = height - 80
     
     # Draw black banner rectangle
     overlay_draw.rectangle(
