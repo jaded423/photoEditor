@@ -22,7 +22,8 @@ Format: Each entry includes date, summary, and details.
 
 **Technical notes:**
 - Benchmarked on 7 + 4 real photos: u2net CPU cold inference 1.6s, warm 1.5s; full pipeline ~4–7s/photo (incl. resize/cleanup/banner). birefnet+CoreML couldn't finish even one photo in the time u2net did all 7 (CoreML "Context leak" graph-compile spam).
-- App rebuilt (`dist/PhotoEditor.app`, 359MB). u2net model not bundled — rembg downloads `u2net.onnx` (168MB) to `~/.u2net/` on first run (down from birefnet's 928MB → faster first launch for recipients).
+- App rebuilt (`dist/PhotoEditor.app`, 359MB; zipped 127MB via `ditto`). u2net model not bundled — rembg downloads `u2net.onnx` (168MB) to `~/.u2net/` on first run (down from birefnet's 928MB → faster first launch for recipients).
+- Distribution: uploaded to Dax Distro Drive ("Manage versions", now **v4**) and added as a new file to the Elevated Drive (shows **v1**).
 - Lever left for later if more edge quality needed: `isnet-general-use` (170MB, crisper than u2net, still ~CPU-fast). Change `REMBG_MODEL`.
 
 ---
