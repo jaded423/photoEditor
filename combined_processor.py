@@ -58,6 +58,31 @@ except ImportError as e:
 else:
     PHOTO_PROCESSING_AVAILABLE = True
 
+# Cache the rembg session across photos. new_session() loads the model into
+# memory; rebuilding it per image was the dominant cost in batch runs. Built
+# once, reused for the whole batch.
+#
+# Model choice trades speed for edge quality:
+#   u2net (168MB)            - fast, ~1.5s/photo, softer edges  [current]
+#   isnet-general-use (170MB)- fast, crisper than u2net
+#   birefnet-general (928MB) - best edges but ~1-2min/photo
+#
+# CPU provider, NOT CoreML: CoreML must compile the model graph on first
+# inference (~30s cold-start tax) to save ~1s/photo afterward. That only pays
+# off past ~50 photos; for single-image / small-batch use it makes the first
+# photo dramatically slower. CPU is a flat ~1.5s/photo with no compile.
+REMBG_MODEL = 'u2net'
+_REMBG_SESSION = None
+
+def _get_rembg_session():
+    global _REMBG_SESSION
+    if _REMBG_SESSION is None:
+        _REMBG_SESSION = new_session(
+            REMBG_MODEL,
+            providers=['CPUExecutionProvider'],
+        )
+    return _REMBG_SESSION
+
 def add_banner_to_frame(frame, filename, banner_height=80):
     """
     Add a black banner near the bottom of a video frame with filename in white text.
@@ -374,6 +399,26 @@ def smart_resize_1000x1000(img_array):
 
     return canvas
 
+def resize_fill_1000x1000(img_array):
+    """Center-crop to square and scale to fill the full 1000x1000 tile.
+
+    Used for full-frame photos with no isolated subject (bulk piles, smalls,
+    background-removal fallbacks). smart_resize_1000x1000 letterboxes the
+    subject inside a 900x900 box, which leaves a portrait pile sitting in a
+    small centered rectangle with ~37% empty canvas. This instead fills the
+    whole frame so the pile fills the product tile. Top/bottom (or side) strips
+    are cropped off-center — acceptable since there is no single subject to
+    preserve in a pile.
+    """
+    h, w = img_array.shape[:2]
+    side = min(h, w)
+    top = (h - side) // 2
+    left = (w - side) // 2
+    square = img_array[top:top + side, left:left + side]
+    sq_img = Image.fromarray(square, 'RGBA')
+    resized = sq_img.resize((1000, 1000), Image.Resampling.LANCZOS)
+    return np.array(resized)
+
 def process_photo(input_path, output_path):
     """Process a single photo with background removal and banner."""
     
@@ -408,7 +453,7 @@ def process_photo(input_path, output_path):
             original_img.save(output_buffer, format='PNG')
             output_data = output_buffer.getvalue()
         else:
-            session = new_session('birefnet-general')
+            session = _get_rembg_session()
             output_data = remove(input_data, session=session)
 
             # Inspect rembg's result to decide what to do.
@@ -516,10 +561,19 @@ def process_photo(input_path, output_path):
             else:
                 img = img_cleaned
 
-        # Apply 1000x1000 smart resize
-        print("Creating 1000x1000 smart resize...")
+        # Apply 1000x1000 resize. Choose mode by whether a subject was actually
+        # isolated: background-removed subjects have transparent pixels (alpha
+        # 0) around them, so bbox-fit letterboxing keeps the whole subject with
+        # a clean border. Bulk piles / smalls / fallbacks are full-frame
+        # originals with no transparency — fill the tile instead of shrinking
+        # them into a centered rectangle.
         img_array = np.array(img)
-        img_array = smart_resize_1000x1000(img_array)
+        if np.all(img_array[:, :, 3] > 0):
+            print("Full-frame photo (no isolated subject) - filling 1000x1000 tile...")
+            img_array = resize_fill_1000x1000(img_array)
+        else:
+            print("Creating 1000x1000 smart resize...")
+            img_array = smart_resize_1000x1000(img_array)
         
         # Save a copy for pendingProducts before adding the banner
         try:

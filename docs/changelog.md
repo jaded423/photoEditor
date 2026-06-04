@@ -6,6 +6,48 @@ Format: Each entry includes date, summary, and details.
 
 ---
 
+## 2026-06-04 - Fix Slow Photo Processing (2min → ~2s) + Bulk Pile Framing
+
+**What changed:**
+- **Background-removal model reverted** `birefnet-general` (928MB) → `u2net` (168MB) in `combined_processor.py`. A rep reported a single photo taking ~2 min (was ~15s). birefnet inference is many times slower per image on CPU; u2net is a flat ~1.5s/photo.
+- **Session caching**: `new_session()` (loads the model into memory) was being called *per photo* inside `process_photo()`. Added a module-level `_get_rembg_session()` cache so the model loads once per batch instead of every image.
+- **CPU execution provider, explicitly** (`providers=['CPUExecutionProvider']`). CoreML was tested and rejected: it must compile the model graph on first inference (~30s cold-start tax) to save ~1s/photo afterward — only worth it past ~50 photos, and reps run single images. CPU is flat ~1.5s with no compile.
+- **Bulk piles now fill the tile**: new `resize_fill_1000x1000()` center-crops to square and fills the full 1000×1000 frame. Routed automatically — full-frame originals (bulk piles, smalls, bg-removal fallbacks) have no transparency, so they fill; bg-removed single subjects keep the `smart_resize_1000x1000` bbox-fit + 50px border. Previously a portrait pile letterboxed into a ~675×900 rectangle with ~37% empty canvas.
+
+**Why:**
+- Speed regression traced to commit `3aabaf9` (2026-03-19, "Improve photo quality") which swapped isnet → birefnet for edge quality. The quality gain wasn't worth a 8× slowdown for single-image use. u2net edges verified acceptable on real product shots (single bud + bulk piles).
+
+**Files modified:**
+- `combined_processor.py` — `REMBG_MODEL`/`_get_rembg_session()` cache, CPU provider, `resize_fill_1000x1000()`, transparency-based resize routing.
+
+**Technical notes:**
+- Benchmarked on 7 + 4 real photos: u2net CPU cold inference 1.6s, warm 1.5s; full pipeline ~4–7s/photo (incl. resize/cleanup/banner). birefnet+CoreML couldn't finish even one photo in the time u2net did all 7 (CoreML "Context leak" graph-compile spam).
+- App rebuilt (`dist/PhotoEditor.app`, 359MB). u2net model not bundled — rembg downloads `u2net.onnx` (168MB) to `~/.u2net/` on first run (down from birefnet's 928MB → faster first launch for recipients).
+- Lever left for later if more edge quality needed: `isnet-general-use` (170MB, crisper than u2net, still ~CPU-fast). Change `REMBG_MODEL`.
+
+---
+
+## 2026-06-02 - Fix Video Banner Landing in Middle of Product
+
+**What changed:**
+- `add_banner_to_frame()` in `combined_processor.py`: banner is now anchored to the **bottom** of the frame, proportional to height, mirroring the photo banner:
+  - `banner_start_y = height - banner_height - 80` / `banner_end_y = height - 80` (was hardcoded `banner_start_y = 360` from the top).
+- Dropped the video banner band height `120 → 80` to match the photo banner.
+- Committed as `da03575`; PR #4 merged to `Elevated-Trading-LLC/photoEditor:main`; pushed to `jaded423/photoEditor:main`. App rebuilt; v3 zip published to the Dax Distro Drive (same file id, "Manage versions").
+
+**Why:**
+- A rep reported the filename banner covering the product on a batch of videos. No code had changed — the source video shape did. Reps switched to shooting **portrait (478×850)**; the old fixed 360px-from-top offset is dead-center on an 850px-tall frame. Older landscape clips (478 tall) put 360px near the bottom, so the bug only surfaced with portrait video. Bottom-anchoring makes frame size/orientation irrelevant.
+
+**Files modified:**
+- `combined_processor.py` - banner position formula + band height; docstring "top" → "near the bottom"
+
+**Technical notes:**
+- Verified by reprocessing the flagged batch: banner sits at the bottom on both 478×850 portrait (was broken) and 848×478 landscape (was already fine).
+- Speed observation: new clips process ~10–20× faster than old ones — purely source resolution (0.41 MP/frame vs 4K's 8.3 MP), no code-path change. Per-frame work is O(pixels).
+- Pre-existing, separate issue noted: `cv2.VideoCapture` ignores rotation metadata, so 4K clips with `rotation=-90` (e.g. old `AAA - Sour Diesel.MOV`) process sideways. Not addressed here.
+
+---
+
 ## 2026-04-14 - Fix Sideways Photos and Bulk Misclassification
 
 **What changed:**
