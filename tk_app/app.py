@@ -123,7 +123,7 @@ class App:
         browse_btn_frm.grid(column=2, row=1, sticky='e')
         ttk.Button(browse_btn_frm, text='Browse', command=self.browse_folder).pack(side='left')
 
-        self.start_btn = ttk.Button(frm, text='Start Processing Photos', command=self.start_processing)
+        self.start_btn = ttk.Button(frm, text='Start', command=self.start_processing)
         self.start_btn.grid(column=0, row=2, pady=8)
 
         self.stop_btn = ttk.Button(frm, text='Stop', command=self.stop_processing, state='disabled')
