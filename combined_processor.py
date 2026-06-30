@@ -63,15 +63,21 @@ else:
 # once, reused for the whole batch.
 #
 # Model choice trades speed for edge quality:
-#   u2net (168MB)            - fast, ~1.5s/photo, softer edges  [current]
+#   u2net (168MB)            - fast, ~2s/photo, softer edges + red bg-halo
 #   isnet-general-use (170MB)- fast, crisper than u2net
-#   birefnet-general (928MB) - best edges but ~1-2min/photo
+#   birefnet-general (928MB) - best edges, no halo, ~13s/photo  [current]
+#
+# birefnet is ~5x slower per photo than u2net but the edge quality win is
+# clear: u2net leaves colored background halos and rounds off fine detail
+# (pistils, trichome hairs). The old "1-2min/photo" birefnet cost was the
+# model reload per image, eliminated by caching the session below; steady-state
+# inference is ~13s/photo on CPU.
 #
 # CPU provider, NOT CoreML: CoreML must compile the model graph on first
-# inference (~30s cold-start tax) to save ~1s/photo afterward. That only pays
+# inference (~30s cold-start tax) to save time afterward. That only pays
 # off past ~50 photos; for single-image / small-batch use it makes the first
-# photo dramatically slower. CPU is a flat ~1.5s/photo with no compile.
-REMBG_MODEL = 'u2net'
+# photo dramatically slower. CPU is flat per-photo with no compile.
+REMBG_MODEL = 'birefnet-general'
 _REMBG_SESSION = None
 
 def _get_rembg_session():

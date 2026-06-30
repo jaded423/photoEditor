@@ -6,6 +6,38 @@ Format: Each entry includes date, summary, and details.
 
 ---
 
+## 2026-06-30 - Restore birefnet edge quality (caching makes it viable)
+
+**What changed:**
+- **Background-removal model `u2net` → `birefnet-general`** in `combined_processor.py`. The 2026-06-04 entry reverted to u2net to fix a ~2min/photo regression — but that slowdown was the per-photo *model reload*, which the session cache (added in the same commit, `64d197c`) already eliminated. With the session cached, birefnet's steady-state inference is ~13s/photo, not minutes.
+- u2net was leaving colored background halos (visible red bleed on edges) and rounding off fine detail. birefnet removes the halo and preserves pistils / trichome hairs / leaf tips.
+
+**Why:**
+- Quality matters for product-page photos. The original speed objection no longer applies once the model is cached, so the speed/quality tradeoff flipped back toward birefnet.
+
+**Verification (back-to-back benchmark, 4 real photos, both models, session pre-warmed):**
+
+| Photo | u2net | birefnet | coverage u2 / bi |
+|-------|-------|----------|------------------|
+| AAA - Strawberry Lobster | 5.11s | 14.80s | 41.1% / 39.7% |
+| AA - Gush Mintz | 0.66s | 11.73s | 23.5% / 22.8% |
+| A - Gypsy Road | 3.80s | 16.20s | 37.0% / 35.2% |
+| Smalls - Blueberry Bars (skips removal) | 0.23s | 0.22s | — |
+| **avg/photo** | **2.45s** | **10.74s** | |
+
+- Coverage near-identical between models → subject framing unchanged; the win is edge cleanliness, confirmed visually (red halo gone on A/AAA, finer hairs kept). Both models ran clean on all 4 photo types. Smalls skip bg removal entirely (identical either model).
+- Confirmed in the rebuilt app: AA ~13s, smalls instant.
+
+**Files modified:**
+- `combined_processor.py` — `REMBG_MODEL = 'birefnet-general'` + updated model-choice comment block.
+
+**Technical notes:**
+- App rebuilt (`dist/PhotoEditor.app`, 359MB; zipped 128MB via `ditto`). Model still NOT bundled — rembg downloads `birefnet-general.onnx` (**928MB**, up from u2net's 168MB) to `~/.u2net/` on recipient's first run. First launch hangs on photo #1 during that download; subsequent photos are normal.
+- Distribution: upload zip to Dax Distro Drive ("Manage versions", → **v5**) and Elevated Drive (→ **v2**).
+- Lever if 928MB first-launch is too heavy for a recipient: `isnet-general-use` (170MB, crisper than u2net but not as clean as birefnet).
+
+---
+
 ## 2026-06-04 - Fix Slow Photo Processing (2min → ~2s) + Bulk Pile Framing
 
 **What changed:**
