@@ -48,6 +48,33 @@ def setup_logging():
 LOGFILE = setup_logging()
 
 
+# Lightweight last-folder memory. Replaces the old default_raw_folder that the
+# removed Settings window used to manage — a single path in a plain text file,
+# no settings UI. Pre-fills the folder field on launch so the photographer
+# doesn't re-navigate to the Drive folder every time.
+_LAST_FOLDER_FILE = (
+    Path.home() / 'Library' / 'Application Support' / 'CombinedProcessor' / 'last_folder.txt'
+)
+
+
+def load_last_folder():
+    try:
+        folder = _LAST_FOLDER_FILE.read_text(encoding='utf-8').strip()
+        if folder and Path(folder).is_dir():
+            return folder
+    except Exception:
+        pass
+    return ''
+
+
+def save_last_folder(folder):
+    try:
+        _LAST_FOLDER_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _LAST_FOLDER_FILE.write_text(folder, encoding='utf-8')
+    except Exception:
+        logging.exception('Could not save last folder')
+
+
 class ProcessorThread(threading.Thread):
     def __init__(self, folder, progress_queue, stop_event):
         super().__init__()
@@ -87,7 +114,7 @@ class App:
         frm.grid()
 
         ttk.Label(frm, text='Choose raw folder:').grid(column=0, row=0, sticky='w')
-        self.folder_var = tk.StringVar()
+        self.folder_var = tk.StringVar(value=load_last_folder())
 
         folder_entry = ttk.Entry(frm, textvariable=self.folder_var, width=60)
         folder_entry.grid(column=0, row=1, columnspan=2, sticky='we', pady=6)
@@ -121,12 +148,14 @@ class App:
         folder = filedialog.askdirectory(initialdir=str(initial_dir))
         if folder:
             self.folder_var.set(folder)
+            save_last_folder(folder)
 
     def start_processing(self):
         folder = self.folder_var.get().strip()
         if not folder or not os.path.isdir(folder):
             messagebox.showerror('Error', 'Please select a valid folder')
             return
+        save_last_folder(folder)
 
         self.start_btn.config(state='disabled')
         self.stop_btn.config(state='normal')

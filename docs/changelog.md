@@ -18,8 +18,8 @@ Format: Each entry includes date, summary, and details.
 - The n8n automation was replaced by the local-LLM Python flow + `run_full_sync.sh` cron. The webhook path is no longer used, so the UI for it is dead weight and confusing for the photographer.
 - The full webhook-integrated app is preserved at tag **`webhook-edition`** (n8n knowledge recoverable via `git checkout webhook-edition`).
 
-**Side effect:**
-- The Settings window was also the only UI to set `default_raw_folder` (last-used folder pre-fill). With it gone, the folder field starts empty each launch. Acceptable for now; a lightweight "remember last folder" without the settings UI could be re-added later if the photographer wants it.
+**Last-folder memory (replaces the lost `default_raw_folder`):**
+- The Settings window was the only UI that set `default_raw_folder` (folder pre-fill). Rather than lose it, added a lightweight replacement in `tk_app/app.py`: `load_last_folder()` / `save_last_folder()` persist a single path to `~/Library/Application Support/CombinedProcessor/last_folder.txt` (plain text, no settings UI). Saved on Browse and on processing Start; pre-fills the folder field on launch. Invalid/stale paths are ignored on load.
 
 **Files:**
 - `tk_app/app.py` — removed SettingsWindow, both buttons, webhook params
