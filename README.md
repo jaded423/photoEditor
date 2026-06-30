@@ -11,7 +11,7 @@
 
 # 🐍 PhotoEditor
 
-**Batch product-photo processor · macOS Tkinter app · `rembg` background removal · auto-resize · webhook export**
+**Batch product-photo processor · macOS Tkinter app · `rembg` background removal · auto-resize · SKU banner**
 
 [jadedviber.com](https://jadedviber.com) · [github.com/jaded423](https://github.com/jaded423) · [Installation guide →](INSTALL.md)
 
@@ -60,9 +60,8 @@ original/          # source moved here (recoverable)
    - `pendingProducts/` — clean square PNG, no banner (catalog-ready)
    - `edited/` — same image + SKU filename banner overlaid (review-ready)
    - `original/` — source files moved here (nothing destroyed)
-6. **Webhook ping** (optional) — POST to a configured URL with API key header on batch completion. Drives downstream Odoo/Shopify/CMS sync
 
-**UI:** native macOS Tkinter. Pick folder, configure webhook (if used), hit Process. Progress bar + log window.
+**UI:** native macOS Tkinter. Pick folder, hit Process. Progress bar + log window.
 
 ---
 
@@ -90,18 +89,14 @@ The "bulk detection" heuristic in step 2 came out of real-world failure modes: `
 ```
 photoEditor/
 ├── combined_processor.py    # Core pipeline: rembg → cleanup → resize → banner
-├── network_utils.py         # Webhook HTTP client
 ├── tk_app/
-│   ├── app.py               # Tkinter GUI
-│   └── settings.py          # JSON settings (~/Library/Application Support/CombinedProcessor/)
+│   └── app.py               # Tkinter GUI
 ├── build_app.sh             # PyInstaller build script (→ dist/PhotoEditor.app)
 ├── PhotoEditor.icns         # App icon
 ├── PhotoEditor.spec         # PyInstaller spec (bundled font, model, etc.)
 ├── Inter-Bold.ttf           # Bundled banner font
 └── requirements.txt         # 37 deps (rembg, Pillow, tkinter, requests, ...)
 ```
-
-**Settings storage:** `~/Library/Application Support/CombinedProcessor/settings.json` — webhook URL, API key, default folder. Outside the repo by design.
 
 **Logs:** `~/Library/Logs/CombinedProcessor/` — rolling debug logs.
 
@@ -127,21 +122,6 @@ cd photoEditor
 
 ---
 
-## 🔧 Configuration
-
-In-app **Settings** dialog:
-
-| Field | Purpose |
-|---|---|
-| Default folder | Where the file picker opens |
-| Webhook URL | POSTed to on batch completion (e.g. `https://hooks.example.com/photos-done`) |
-| API key | Sent as the value of the configured header |
-| API key header | Header name (default: `Authorization`) |
-
-All settings live in `~/Library/Application Support/CombinedProcessor/settings.json`. Never committed to the repo.
-
----
-
 ## 🤖 AI-assisted, end-to-end
 
 Built through iterative dialogue with Claude (Anthropic). The hardest part wasn't `rembg` — it was the heuristic for "did the background-removal step actually work, or did it make things worse?" That came out of pairing on real failure cases.
@@ -157,7 +137,7 @@ Same approach behind everything at [jadedviber.com](https://jadedviber.com).
 | App won't open after install | See [INSTALL.md](INSTALL.md) — Gatekeeper walkthrough |
 | "PhotoEditor.app is damaged" | Re-download the zip; archive corrupted during transfer |
 | All photos coming out empty | Check `~/Library/Logs/CombinedProcessor/` — likely a model download issue on first launch |
-| Webhook ping not firing | Settings → confirm URL + API key. Check log for HTTP response code |
+| First photo hangs for minutes | Normal on first-ever launch — rembg downloads the `birefnet-general` model (~928MB) to `~/.u2net/`. Later photos are fast |
 | Crashes on launch | Ensure macOS 12+ (Monterey or later) |
 
 ---

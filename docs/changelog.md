@@ -6,6 +6,28 @@ Format: Each entry includes date, summary, and details.
 
 ---
 
+## 2026-06-30 - Strip n8n webhook UI (Settings page, Create Products button)
+
+**What changed:**
+- Removed the **Settings** window + **Settings** button and the **Create Products (Elevated)** button from `tk_app/app.py`. All three existed only to POST to an n8n webhook for product creation.
+- Deleted `network_utils.py` (webhook HTTP client) and `tk_app/settings.py` (JSON settings store for webhook URL / API key / header).
+- Stripped the now-dead webhook plumbing from `ProcessorThread` (it never used those params — `process_media_batch` was already called without them).
+- Docs cleaned: `CLAUDE.md` (Settings section + arch tree), `README.md` (webhook pipeline step, Settings config table, troubleshooting row, arch tree).
+
+**Why:**
+- The n8n automation was replaced by the local-LLM Python flow + `run_full_sync.sh` cron. The webhook path is no longer used, so the UI for it is dead weight and confusing for the photographer.
+- The full webhook-integrated app is preserved at tag **`webhook-edition`** (n8n knowledge recoverable via `git checkout webhook-edition`).
+
+**Last-folder memory (replaces the lost `default_raw_folder`):**
+- The Settings window was the only UI that set `default_raw_folder` (folder pre-fill). Rather than lose it, added a lightweight replacement in `tk_app/app.py`: `load_last_folder()` / `save_last_folder()` persist a single path to `~/Library/Application Support/CombinedProcessor/last_folder.txt` (plain text, no settings UI). Saved on Browse and on processing Start; pre-fills the folder field on launch. Invalid/stale paths are ignored on load.
+
+**Files:**
+- `tk_app/app.py` — removed SettingsWindow, both buttons, webhook params
+- deleted `network_utils.py`, `tk_app/settings.py`
+- `CLAUDE.md`, `README.md` — doc cleanup
+
+---
+
 ## 2026-06-30 - Restore birefnet edge quality (caching makes it viable)
 
 **What changed:**

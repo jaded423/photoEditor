@@ -60,3 +60,5 @@ results.zip
 *.temp
 
 raw/
+# Local Claude Code config
+.claude/

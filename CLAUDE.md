@@ -13,10 +13,8 @@ Batch photo and video processor for product photography. Removes backgrounds, re
 ```
 photoEditor/
 ├── combined_processor.py    # Core processing engine
-├── network_utils.py         # Webhook HTTP client
 ├── tk_app/
-│   ├── app.py               # Tkinter GUI
-│   └── settings.py          # JSON settings (~Library/Application Support/CombinedProcessor/)
+│   └── app.py               # Tkinter GUI
 ├── build_app.sh             # PyInstaller build script
 ├── PhotoEditor.icns         # App icon
 ├── Inter-Bold.ttf           # Bundled banner font
@@ -60,14 +58,6 @@ Requires Python 3.13 at `/Library/Frameworks/Python.framework/Versions/3.13/`. B
 - `opencv-python` — video processing
 - `scipy` — connected component analysis, bulk photo detection
 - `pillow` + `pillow-heif` — image handling including iPhone HEIC
-
-## Settings
-
-Stored at `~/Library/Application Support/CombinedProcessor/settings.json`:
-- `webhook_url` — POST endpoint for product creation (Elevated only)
-- `api_key` — Authentication key (stored plaintext)
-- `api_key_header` — Header name (default: "Authorization")
-- `default_raw_folder` — Last used input folder
 
 ## Changelog
 
