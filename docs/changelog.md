@@ -6,6 +6,28 @@ Format: Each entry includes date, summary, and details.
 
 ---
 
+## 2026-06-30 - Strip n8n webhook UI (Settings page, Create Products button)
+
+**What changed:**
+- Removed the **Settings** window + **Settings** button and the **Create Products (Elevated)** button from `tk_app/app.py`. All three existed only to POST to an n8n webhook for product creation.
+- Deleted `network_utils.py` (webhook HTTP client) and `tk_app/settings.py` (JSON settings store for webhook URL / API key / header).
+- Stripped the now-dead webhook plumbing from `ProcessorThread` (it never used those params — `process_media_batch` was already called without them).
+- Docs cleaned: `CLAUDE.md` (Settings section + arch tree), `README.md` (webhook pipeline step, Settings config table, troubleshooting row, arch tree).
+
+**Why:**
+- The n8n automation was replaced by the local-LLM Python flow + `run_full_sync.sh` cron. The webhook path is no longer used, so the UI for it is dead weight and confusing for the photographer.
+- The full webhook-integrated app is preserved at tag **`webhook-edition`** (n8n knowledge recoverable via `git checkout webhook-edition`).
+
+**Side effect:**
+- The Settings window was also the only UI to set `default_raw_folder` (last-used folder pre-fill). With it gone, the folder field starts empty each launch. Acceptable for now; a lightweight "remember last folder" without the settings UI could be re-added later if the photographer wants it.
+
+**Files:**
+- `tk_app/app.py` — removed SettingsWindow, both buttons, webhook params
+- deleted `network_utils.py`, `tk_app/settings.py`
+- `CLAUDE.md`, `README.md` — doc cleanup
+
+---
+
 ## 2026-06-30 - Restore birefnet edge quality (caching makes it viable)
 
 **What changed:**
