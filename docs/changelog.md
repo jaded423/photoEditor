@@ -6,6 +6,34 @@ Format: Each entry includes date, summary, and details.
 
 ---
 
+## 2026-06-30 - Fork restructuring (jaded423 upstream / Elevated fork) + "Start" button
+
+**What changed:**
+- **Repo topology established.** `jaded423/photoEditor` is now the canonical **upstream** (Joshua owns it; local `origin`). `Elevated-Trading-LLC/photoEditor` was converted to a **true GitHub fork** of upstream (`isFork: true`, parent verified). The old org repo was renamed `Elevated-Trading-LLC/photoEditor-archive` and set **read-only (archived)** as pre-fork history.
+- **Tag `webhook-edition`** created + pushed (on upstream + fork) at the last commit before the n8n strip — permanent recovery point for the webhook app.
+- **Start button** relabeled `Start Processing Photos` → `Start` (the pipeline handles video too, so the photo-specific label was misleading).
+- Merged PR #1 (birefnet), PR #2 (strip + last-folder + Start), PR #3 (topology doc) into upstream `main`. Closed the now-redundant archive PR #6 (`.claude/` ignore — already gitignored upstream).
+- `.gitignore`: added `.claude/` (local Claude Code config).
+- `CLAUDE.md` Repository section rewritten to document the upstream/fork/archive layout (current-state change — committed via PR #3).
+
+**Why:**
+- Joshua built the app and showcases it on jadedviber.com, so it should be **owned on his personal account**, with Elevated as a fork for future org devs / a clean post-departure split. The two repos had drifted (two unlinked repos pushed by hand); a real fork + single upstream fixes that. Drift was proven harmless first — `git diff elevated/main main` was empty (byte-identical trees), so nothing from the prior PRs was lost.
+
+**Fork workflow going forward:**
+- Work on `origin` (jaded423), PR to upstream `main`. Org devs PR **up** from the fork; pull upstream changes **down** via GitHub "Sync fork" (`gh repo sync Elevated-Trading-LLC/photoEditor`).
+- Distribution unchanged: Google Drive zips (Dax "Manage versions" → v5, Elevated → v2). Repo split doesn't touch distribution.
+
+**Files modified:**
+- `tk_app/app.py` — Start button label
+- `.gitignore` — `.claude/`
+- `CLAUDE.md` — Repository section (fork topology)
+
+**Technical notes:**
+- Birefnet first-launch downloads 928MB to `~/.u2net/` on recipients (up from u2net 168MB) — first photo hangs during download, then normal.
+- Session memory seeded (was empty) at `~/.claude/projects/-Users-j-projects-photoEditor/memory/`: `birefnet-reload-not-inference`, `photoeditor-fork-topology`.
+
+---
+
 ## 2026-06-30 - Strip n8n webhook UI (Settings page, Create Products button)
 
 **What changed:**
