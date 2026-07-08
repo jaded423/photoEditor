@@ -1,5 +1,7 @@
 # PhotoEditor
 
+> **Stack:** Tier-2 leaf (standalone). Parent/router: [global](~/.claude/CLAUDE.md). Leaf → no `wiki/` tree.
+
 Batch photo and video processor for product photography. Removes backgrounds, resizes to 1000x1000, and adds filename banners.
 
 ## Repository
