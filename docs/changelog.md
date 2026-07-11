@@ -1,3 +1,10 @@
+---
+type: log
+title: PhotoEditor Changelog
+tags: [photoeditor, changelog, history]
+related: []
+---
+
 # Changelog
 
 All notable changes to this project are documented here.
