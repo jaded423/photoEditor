@@ -58,6 +58,11 @@ Format: Each entry includes date, summary, and details.
   instead of `sqrt(area)` so a soft-focus bud beats a small sharp fold of cloth (Strawberry Cough).
 - Result on the 38 live tiles: 35 cut (was 30), 0 regressions, remaining 3 = piles/smalls by design.
 
+**Distribution (2026-09-04 late):** rebuilt `dist/PhotoEditor.app` (359MB) with the tuned cut, zipped with
+`ditto --keepParent` (133MB) and written over Drive `Product Pics and Vids/PhotoEditor/PhotoEditor.zip` — same
+file ID, so the old link still works and Drive keeps the June build as a prior version. Cynthia downloads it
+next week. INSTALL notes unchanged (they never mentioned model sizes).
+
 **Technical notes:**
 - rembg's SAM decoder is exported for a fixed 684×1024 landscape frame — any other shape returns a
   vertically stretched mask. `sam_masks()` aspect-fits + pads, then un-fits. brain: `rembg-sam-onnx-684x1024-frame`.
