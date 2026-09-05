@@ -9,7 +9,7 @@ Batch photo and video processor for product photography. Removes backgrounds, re
 - **Canonical (upstream):** `jaded423/photoEditor` — owned by Joshua, source of truth. Local `origin` points here.
 - **Fork:** `Elevated-Trading-LLC/photoEditor` — a GitHub fork of upstream. Local remote `elevated`. Org devs work here and PR up to upstream `main`; pull upstream changes back via GitHub "Sync fork".
 - **Archive:** `Elevated-Trading-LLC/photoEditor-archive` — read-only pre-fork history (the n8n webhook edition). The full webhook app is also recoverable at the `webhook-edition` tag on upstream.
-- **Branch convention:** Feature branches with PRs to upstream `main`.
+- **Branch convention:** direct push to `main` (global commit/push doctrine, 2026-08-21); the fork syncs down via GitHub "Sync fork". No PRs for Joshua's own work.
 
 ## Architecture
 
@@ -38,8 +38,10 @@ Per photo (`combined_processor.process_photo`), EXIF-upright first, then:
    **BiRefNet** mattes the same crop (1024² on a crop ≈ 3–4× the edge resolution of a full-frame
    pass) and is gated by the SAM region; glove fingertips / bucket-red slivers on the rim are
    peeled; 2px erode + feather + colour decontamination kills the red fringe.
-   Returns `None` (→ step 2) when no held bud is found (piles, smalls, bulk), when SAM's object is
-   a sliver of the crop (one nug out of a pile), or on any exception — the old path is the safety net.
+   If SAM answers a point with one calyx, the prompt escalates (box, then extra positives); if it still
+   refuses, the colour-cue blob gates BiRefNet instead. Returns `None` (→ step 2) when no held bud is
+   found (piles, smalls, bulk), when the two models don't agree on ONE solid blob, or on any exception —
+   the old path is the safety net.
    Gotcha: rembg's SAM decoder is baked to a 684×1024 frame — see brain `rembg-sam-onnx-684x1024-frame`.
 2. **Full-frame fallback** (unchanged old path): `rembg` `birefnet-general`; `Smalls` prefix skips removal.
    Coverage >85% → bulk/pile, use original; <5% → use original. Component cleanup (keep near the
