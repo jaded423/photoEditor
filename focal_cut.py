@@ -59,6 +59,7 @@ def find_focal_bud(rgb_full):
     yy = np.linspace(1.0, 0.0, h, dtype=np.float32)[:, None]      # raised-bud prior: higher in frame = better
 
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    bud = bud & (cv2.blur(tx, (9, 9)) > 4.0)          # buds are busy at every scale; walls / cabinets / fabric are not
     budm = cv2.morphologyEx(bud.astype(np.uint8), cv2.MORPH_CLOSE, k)
     budm = cv2.morphologyEx(budm, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
     lab, n = ndimage.label(budm)
@@ -104,7 +105,7 @@ def find_focal_bud(rgb_full):
             if rest.sum() > 0 and ds["sharp"] < 1.25 * float(sh[rest].mean()):
                 continue                              # not in front of the pile, just part of it
             ds["mask"] = sub; ds["from_pile"] = True
-            ds["score"] = ds["sharp"] * np.sqrt(ds["area"]) * (0.35 + ds["fill"]) * 0.8
+            ds["score"] = ds["sharp"] * ds["area"] ** 0.6 * (0.35 + ds["fill"]) * 0.8
             cands.append(ds)
             continue
         if d["tex"] < 6 or d["aspect"] > 4:        # smooth or a thin arc → bucket rim / glare, not a bud
@@ -112,7 +113,7 @@ def find_focal_bud(rgb_full):
         if d["bbox"][1] > 0.7 * h:                  # lives entirely in the bottom 30% → table / pile edge
             continue
         d["mask"] = m; d["from_pile"] = False
-        d["score"] = d["sharp"] * np.sqrt(area) * (0.35 + d["fill"])
+        d["score"] = d["sharp"] * area ** 0.6 * (0.35 + d["fill"])
         if d["touches_bottom"]:
             d["score"] *= 0.15
         if d["touches_top"]:
@@ -172,7 +173,7 @@ def find_focal_bud(rgb_full):
 # ----------------------------------------------------------------- SAM ----
 SAM_FRAME = (684, 1024)  # rembg's sam_vit_b ONNX export bakes this landscape frame into the decoder
 
-def sam_masks(sam_session, rgb, pos, neg):
+def sam_masks(sam_session, rgb, pos, neg, box=None):
     """Run rembg's SAM ONNX pair on rgb (uint8 HxWx3). Returns (masks[n,H,W] bool, iou[n]) in rgb's pixel grid.
     The exported decoder assumes the encoder saw a 684x1024 frame, so anything else comes back warped;
     we aspect-fit the image into that frame, pad, and map the mask back."""
@@ -184,8 +185,12 @@ def sam_masks(sam_session, rgb, pos, neg):
     frame = np.zeros((fh, fw, 3), np.uint8)
     frame[:rh, :rw] = cv2.resize(rgb, (rw, rh), interpolation=cv2.INTER_AREA)
     emb = enc.run(None, {enc.get_inputs()[0].name: frame.astype(np.float32)})[0]
-    pts = np.array([[x * sc, y * sc] for x, y in list(pos) + list(neg)] + [[0, 0]], dtype=np.float32)[None]
-    lbl = np.array([1] * len(pos) + [0] * len(neg) + [-1], dtype=np.float32)[None]
+    coords = [[x * sc, y * sc] for x, y in list(pos) + list(neg)]
+    labels = [1] * len(pos) + [0] * len(neg)
+    if box is not None:                                   # (x0, y0, x1, y1) in rgb pixels
+        coords += [[box[0] * sc, box[1] * sc], [box[2] * sc, box[3] * sc]]; labels += [2, 3]
+    pts = np.array(coords + [[0, 0]], dtype=np.float32)[None]
+    lbl = np.array(labels + [-1], dtype=np.float32)[None]
     masks, iou, _ = dec.run(None, {
         "image_embeddings": emb, "point_coords": pts, "point_labels": lbl,
         "mask_input": np.zeros((1, 1, 256, 256), np.float32), "has_mask_input": np.zeros(1, np.float32),
@@ -264,8 +269,22 @@ def _sam_region(sam_session, crop, info, X0, Y0, X1, Y1):
     ref = cv2.resize(info["comp"][Y0:Y1, X0:X1].astype(np.uint8), (small.shape[1], small.shape[0]),
                      interpolation=cv2.INTER_NEAREST).astype(bool)
     m = None
-    for attempt in range(3):
-        masks, iou = sam_masks(sam_session, small, pos, neg)
+    ry, rx = np.where(ref)
+    box = (max(0, rx.min() - 8), max(0, ry.min() - 8), min(small.shape[1] - 1, rx.max() + 8), min(small.shape[0] - 1, ry.max() + 8)) if len(rx) else None
+    # more positives spread over the cue blob, for the "SAM picked one calyx" case
+    extra = []
+    if len(rx) > 50:
+        dt = cv2.distanceTransform(ref.astype(np.uint8), cv2.DIST_L2, 5)
+        h4, w4 = ref.shape[0] // 2, ref.shape[1] // 2
+        for qy, qx in ((0, 0), (0, w4), (h4, 0), (h4, w4)):
+            sub = dt[qy:qy + h4, qx:qx + w4]
+            if sub.size and sub.max() > 6:
+                yy, xx = np.unravel_index(np.argmax(sub), sub.shape); extra.append([float(qx + xx), float(qy + yy)])
+    escalation = [dict(), dict(box=box), dict(box=box, more=True)]
+    for attempt in range(5):
+        e = escalation[min(attempt, 2)]
+        p_ = pos + (extra if e.get("more") else [])
+        masks, iou = sam_masks(sam_session, small, p_, neg, box=e.get("box"))
         m = pick_sam_mask(masks, iou, ref, neg)
         if m is None or m.sum() == 0:
             return None, small, pos, neg, iou, s
@@ -277,7 +296,12 @@ def _sam_region(sam_session, crop, info, X0, Y0, X1, Y1):
         ys, xs = np.where(m)
         leaks_down = ys.max() >= small.shape[0] - 2 and (Y1 < info["comp"].shape[0])  # hits crop bottom, not image bottom
         too_big = m.sum() > 3.0 * max(ref.sum(), 1)
-        if not (leaks_down or too_big):
+        too_small = m.sum() < 0.3 * ref.sum()                 # SAM grabbed a sub-part (one calyx) — escalate the prompt
+        if not (leaks_down or too_big or too_small):
+            break
+        if too_small and attempt < 2:
+            continue
+        if too_small:
             break
         # push SAM off the pile: negatives along the lowest rows of the leaked mask
         band = m.copy(); band[: int(ys.min() + 0.75 * (ys.max() - ys.min()))] = False
@@ -319,6 +343,14 @@ def cut_array(rgb_full, sam_session, bire_session, margin=0.22, debug=None):
         if not hits:
             break
         side *= 1.4                                   # subject ran into the crop border → widen and redo
+    ref_full = info["comp"][Y0:Y1, X0:X1]
+    sam_small = m.sum() / (s * s) < 0.3 * max(ref_full.sum(), 1)
+    if sam_small:
+        # SAM would not give the whole object; the colour-cue blob already excludes glove / bucket / pile,
+        # so use it (closed + dilated) as the region and let BiRefNet draw the edge.
+        k9 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * max(4, int(0.02 * max(ch, cw))) + 1,) * 2)
+        m = cv2.morphologyEx(ref_full.astype(np.uint8), cv2.MORPH_CLOSE, k9)
+        m = cv2.resize(m, (small.shape[1], small.shape[0]), interpolation=cv2.INTER_NEAREST).astype(bool)
     gate = cv2.resize(m.astype(np.uint8), (cw, ch), interpolation=cv2.INTER_LINEAR).astype(np.float32)
     d = max(3, int(0.012 * max(ch, cw)))
     gate = cv2.dilate(gate, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * d + 1, 2 * d + 1)))
@@ -343,7 +375,7 @@ def cut_array(rgb_full, sam_session, bire_session, margin=0.22, debug=None):
     ys, xs = np.where(keep)
     if keep.sum() < 0.3 * (np.ptp(ys) + 1) * (np.ptp(xs) + 1):
         return None, dict(reason="not a solid blob")
-    used = "birefnet*sam"
+    used = "birefnet*cue" if sam_small else "birefnet*sam"
     alpha = peel_foreign(crop, alpha)
     if (alpha > 0.5).mean() < 0.04:
         return None, dict(reason="subject too small for its crop (pile nug?)")

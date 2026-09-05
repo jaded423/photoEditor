@@ -48,6 +48,16 @@ Format: Each entry includes date, summary, and details.
   bud pinched from both sides (Smalls - Orange Tits) keeps a sliver of pale fingertip — its colour is
   indistinguishable from frosty trichomes.
 
+**Same-day tuning (after the first live batch, 38 pages):**
+- SAM sometimes returns one calyx for a single point prompt (Gelato, Green Crack: 0.3–2% of the crop while
+  BiRefNet saw 20–30%). `_sam_region` now escalates — box prompt (labels 2/3), then four extra positives
+  from the cue blob's distance-transform peaks — and if SAM still refuses, the closed/dilated colour-cue
+  blob gates BiRefNet instead (`used="birefnet*cue"`).
+- Cue stage: pixel-level texture gate (`blur(tex,9) > 4`) before labelling, so smooth bud-coloured walls /
+  cabinets / fabric can't merge with the bud (Jack Herer's beige wall); candidate score uses `area**0.6`
+  instead of `sqrt(area)` so a soft-focus bud beats a small sharp fold of cloth (Strawberry Cough).
+- Result on the 38 live tiles: 35 cut (was 30), 0 regressions, remaining 3 = piles/smalls by design.
+
 **Technical notes:**
 - rembg's SAM decoder is exported for a fixed 684×1024 landscape frame — any other shape returns a
   vertically stretched mask. `sam_masks()` aspect-fits + pads, then un-fits. brain: `rembg-sam-onnx-684x1024-frame`.
