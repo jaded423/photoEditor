@@ -89,6 +89,35 @@ def _get_rembg_session():
         )
     return _REMBG_SESSION
 
+# Scene-aware "focal cut" (focal_cut.py): finds the ONE held bud, prompts SAM at it so
+# the glove / pile / bucket are excluded, then mattes a tight crop with BiRefNet for
+# fine edges and defringes the red. Runs BEFORE the full-frame rembg pass below; when
+# it finds no held bud (piles, smalls, jars) or throws, the old path runs unchanged.
+# SAM is rembg's sam_vit_b ONNX pair (~375MB, auto-downloads to ~/.u2net like BiRefNet).
+FOCAL_CUT_ENABLED = True
+_SAM_SESSION = None
+
+def _get_sam_session():
+    global _SAM_SESSION
+    if _SAM_SESSION is None:
+        _SAM_SESSION = new_session('sam', providers=['CPUExecutionProvider'])
+    return _SAM_SESSION
+
+def _focal_cut(oriented_rgb_image):
+    """Return an RGBA numpy crop of the held bud, or None to fall back to the full-frame path."""
+    if not FOCAL_CUT_ENABLED:
+        return None
+    try:
+        from focal_cut import cut_array
+        rgba, meta = cut_array(np.asarray(oriented_rgb_image.convert('RGB')),
+                               _get_sam_session(), _get_rembg_session())
+        print(f"focal cut: {meta.get('reason')}"
+              + (f" ({meta.get('used')}, cover {meta.get('cover', 0):.0%})" if rgba is not None else ""))
+        return rgba
+    except Exception as e:
+        print(f"focal cut failed ({e}) - falling back to full-frame background removal")
+        return None
+
 def add_banner_to_frame(frame, filename, banner_height=80):
     """
     Add a black banner near the bottom of a video frame with filename in white text.
@@ -452,7 +481,13 @@ def process_photo(input_path, output_path):
             oriented.convert('RGB').save(buf, format='PNG')
             input_data = buf.getvalue()
 
-        if filename_starts_with_smalls:
+        focal_rgba = _focal_cut(oriented)
+        if focal_rgba is not None:
+            # Held bud isolated (glove / pile / bucket excluded). Skip the full-frame
+            # rembg pass and its component cleanup entirely.
+            img = Image.fromarray(focal_rgba, 'RGBA')
+            output_data = None
+        elif filename_starts_with_smalls:
             print("Skipping background removal - Smalls file - using original image")
             original_img = Image.open(io.BytesIO(input_data)).convert('RGBA')
             output_buffer = io.BytesIO()
@@ -484,16 +519,15 @@ def process_photo(input_path, output_path):
                 original_img.save(output_buffer, format='PNG')
                 output_data = output_buffer.getvalue()
         
-        # Post-processing to remove small objects
-        print("Cleaning up small objects...")
-        img = Image.open(io.BytesIO(output_data)).convert('RGBA')
-        img_array = np.array(img)
-        
-        # Get alpha channel
-        alpha = img_array[:, :, 3]
-        
-        # Find connected components
-        labeled_array, num_features = ndimage.label(alpha > 30)
+        # Post-processing to remove small objects (full-frame path only)
+        if output_data is not None:
+            print("Cleaning up small objects...")
+            img = Image.open(io.BytesIO(output_data)).convert('RGBA')
+            img_array = np.array(img)
+            alpha = img_array[:, :, 3]
+            labeled_array, num_features = ndimage.label(alpha > 30)
+        else:
+            num_features = 0
 
         if num_features > 1:
             component_sizes = np.bincount(labeled_array.ravel())

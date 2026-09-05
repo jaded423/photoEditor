@@ -11,7 +11,7 @@
 
 # 🐍 PhotoEditor
 
-**Batch product-photo processor · macOS Tkinter app · `rembg` background removal · auto-resize · SKU banner**
+**Batch product-photo processor · macOS Tkinter app · scene-aware subject cut (SAM + BiRefNet) · auto-resize · SKU banner**
 
 [jadedviber.com](https://jadedviber.com) · [github.com/jaded423](https://github.com/jaded423) · [Installation guide →](INSTALL.md)
 
@@ -52,8 +52,8 @@ original/          # source moved here (recoverable)
 
 **Pipeline:**
 
-1. **Background removal** — `rembg` with the `birefnet-general` model. Filename prefix `smalls` skips this step (pile shots, bulk product fills the frame already)
-2. **Bulk detection** — if rembg kept >85% coverage (no clear subject) OR <5% coverage (over-removed), falls back to the original. Saves the "pile of nugs" case
+1. **Focal cut** (`focal_cut.py`) — finds the ONE hand-held product in the frame from cheap cues (colour classes, sharpness, texture, position), prompts **SAM** at it with negative points on the hand/glove, the pile behind, and the backdrop, then mattes a tight crop with **BiRefNet** for fine edges and defringes the backdrop colour. Hands, gloves, the pile behind and the tray/bucket are excluded. Declines (→ step 2) on pile shots or anything it isn't sure about.
+2. **Full-frame fallback** — `rembg` `birefnet-general` on the whole frame; filename prefix `smalls` skips it (bulk product fills the frame). If rembg kept >85% coverage (no clear subject) OR <5% (over-removed), falls back to the original. Saves the "pile of nugs" case
 3. **Component cleanup** — keeps everything connected to the main subject. Strips only small distant fragments (alpha > 30 threshold)
 4. **Smart resize** — crops to subject bounding box, scales to 900×900, centers on a 1000×1000 transparent canvas with a 50px border
 5. **Outputs**:
@@ -77,8 +77,9 @@ The "bulk detection" heuristic in step 2 came out of real-world failure modes: `
 
 | Type | Example filename | Behavior |
 |---|---|---|
-| Single subject | `jar-001.jpg` | Full pipeline: bg removal + resize + banner |
-| Bulk / pile | `smalls-batch-3.jpg` | Skip bg removal (filename prefix), resize only |
+| Hand-held product over a tray / pile | `aaa-strain.jpg` | Focal cut: product only, hand + pile + tray removed |
+| Single subject | `jar-001.jpg` | Focal cut, else full-frame bg removal + resize + banner |
+| Bulk / pile | `smalls-batch-3.jpg` | Focal cut declines → skip bg removal, resize only |
 | Middle-ground (scattered) | `jar-with-scatter.jpg` | Full pipeline, keeps scattered pieces (component cleanup tuned to not strip them) |
 | Over-removed by rembg | (auto-detected) | Falls back to original |
 
@@ -88,7 +89,8 @@ The "bulk detection" heuristic in step 2 came out of real-world failure modes: `
 
 ```
 photoEditor/
-├── combined_processor.py    # Core pipeline: rembg → cleanup → resize → banner
+├── combined_processor.py    # Core pipeline: focal cut → (fallback rembg → cleanup) → resize → banner
+├── focal_cut.py             # Scene-aware subject isolation: cues → SAM prompt → BiRefNet crop matte → defringe
 ├── tk_app/
 │   └── app.py               # Tkinter GUI
 ├── build_app.sh             # PyInstaller build script (→ dist/PhotoEditor.app)
@@ -137,7 +139,7 @@ Same approach behind everything at [jadedviber.com](https://jadedviber.com).
 | App won't open after install | See [INSTALL.md](INSTALL.md) — Gatekeeper walkthrough |
 | "PhotoEditor.app is damaged" | Re-download the zip; archive corrupted during transfer |
 | All photos coming out empty | Check `~/Library/Logs/CombinedProcessor/` — likely a model download issue on first launch |
-| First photo hangs for minutes | Normal on first-ever launch — rembg downloads the `birefnet-general` model (~928MB) to `~/.u2net/`. Later photos are fast |
+| First photo hangs for minutes | Normal on first-ever launch — rembg downloads the `birefnet-general` model (~928MB) and the SAM ViT-B pair (~375MB) to `~/.u2net/`. Later photos are fast |
 | Crashes on launch | Ensure macOS 12+ (Monterey or later) |
 
 ---

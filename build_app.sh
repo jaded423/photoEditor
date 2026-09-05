@@ -34,6 +34,7 @@ DATA_ARGS=(
   --add-data "$HERE/Inter-Bold.ttf:."
   --add-data "$HERE/tk_app:tk_app"
   --add-data "$HERE/combined_processor.py:."  # include main processor module
+  --add-data "$HERE/focal_cut.py:."           # scene-aware held-bud cut (imported by combined_processor)
 )
 
 # Add repo root to PyInstaller search path so imports from project root are discovered

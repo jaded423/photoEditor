@@ -13,6 +13,54 @@ Format: Each entry includes date, summary, and details.
 
 ---
 
+## 2026-09-04 - Scene-aware focal cut (held bud only)
+
+**What changed:**
+- New `focal_cut.py`, called first from `process_photo`. Finds the ONE held bud and cuts only it;
+  the old full-frame rembg pass stays as the fallback (piles, smalls, jars, any exception).
+- Cue stage (640px, no model): colour classes (red bucket / dark or blue-sheen glove / bud-coloured),
+  sharpness, texture. Picks the raised, in-focus bud; rejects the pile (touches the bottom edge),
+  bucket-rim glare (smooth / thin arc), the ULINE box (touches the top). A bud resting ON the pile is
+  carved out by sharpness × height-in-frame, only if it is clearly sharper than the rest of the pile.
+- SAM (rembg's `sam_vit_b` ONNX pair, driven directly through `session.encoder/decoder`) on a tight
+  crop with +bud / −glove / −pile / −red point prompts → object mask that excludes the glove. Retries
+  with extra negatives if the mask leaks into the pile; widens the crop if the subject hits its border.
+- BiRefNet mattes the same crop (1024² on a crop ≈ 3–4× the edge resolution of the old full-frame
+  pass) and is gated by the SAM region. Rim peel drops glove fingertips / bucket-red slivers; 2px
+  erode + feather + colour decontamination removes the red fringe. Subject < 4% of its crop → decline
+  (SAM grabbed one nug out of a pile).
+- `combined_processor.py`: `_get_sam_session()` (cached like BiRefNet), `_focal_cut()` wrapper with
+  try/except fallback, `FOCAL_CUT_ENABLED` kill switch. Output contract untouched (`pendingProducts/`,
+  `edited/`, `original/`, 1000² RGBA, banner, video path).
+- `build_app.sh`: bundles `focal_cut.py`. `test_focal_cut.py`: 4 model-free cue tests (synthetic scene).
+- `CLAUDE.md` pipeline section rewritten; elevatedWeb wiki `photoEditor.md` points here.
+
+**Why:**
+- The photographer's standard shot is one bud held in a black nitrile glove over a red bucket with the
+  pile of the same strain behind. A generic "salient object" matte can't tell bud from glove from pile:
+  the live site had gloves in the cutout (Forbidden Fruit, Jack Herer, Blue Dream, Strawberry Cough,
+  Wedding Crasher…), the pile kept (Pack Mule, Wedding Cake), full-frame fallbacks (Astroboy, Tropicana
+  Cookies, Orange Tits) and a red halo on nearly every edge (Tiger King, Z Fire…).
+- Evidence (2026-09-04 sandbox, real originals from `Photo-to-Site/original/`): **26/26** of her recent
+  red-bucket shots come out bud-only (0 gloves, 0 piles, 0 bucket, no red halo at 1000px). Older
+  steel-bowl / kitchen shots: 4 cut cleanly (Blue Cookies, Pink Cookies, GMO x ICC, Galactic Jack),
+  7 decline to the old path unchanged (incl. both smalls piles). Known limit: a heavily motion-blurred
+  bud pinched from both sides (Smalls - Orange Tits) keeps a sliver of pale fingertip — its colour is
+  indistinguishable from frosty trichomes.
+
+**Technical notes:**
+- rembg's SAM decoder is exported for a fixed 684×1024 landscape frame — any other shape returns a
+  vertically stretched mask. `sam_masks()` aspect-fits + pads, then un-fits. brain: `rembg-sam-onnx-684x1024-frame`.
+- SAM's decoder here returns ONE mask (multimask off); rembg's own wrapper unions masks and hides prompts.
+- `Smalls` prefix is no longer a hard skip: if the photographer held one small bud up, it gets cut like
+  any other grade; a smalls pile still declines and fills the tile as before.
+- ~15–20s/photo on M4 CPU (SAM encoder ~5s + BiRefNet ~10s). First run downloads ~375MB of SAM weights
+  to `~/.u2net/` next to BiRefNet.
+- Not addressed (cosmetic, optional later): red colour cast from the bucket reflecting onto the bud;
+  motion-blurred source photos.
+
+---
+
 ## 2026-06-30 - Fork restructuring (jaded423 upstream / Elevated fork) + "Start" button
 
 **What changed:**
