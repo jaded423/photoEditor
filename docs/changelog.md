@@ -28,7 +28,7 @@ Format: Each entry includes date, summary, and details.
 - Release `v1.0.0` re-cut from `release/PhotoEditor.zip` (sha256 e42b0ced…); the install link serves it again.
 - Local remote `elevated` removed (pointed at the old fork).
 
-**Pending:** collaborators (Cesar admin, Cody + Cynthia read) — see TODO.md.
+**Access:** no per-repo grants needed — org base permission `read` + Cesar's org role `all_repo_admin` already give Cesar admin, Cody + Cynthia read on every org repo.
 
 ---
 
