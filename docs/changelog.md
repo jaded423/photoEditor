@@ -13,6 +13,25 @@ Format: Each entry includes date, summary, and details.
 
 ---
 
+## 2026-09-24 - Fresh org repo: Elevated-Trading-LLC/photoEditor, one clean commit
+
+**What changed:**
+- The old org fork + `photoEditor-archive` were deleted by Joshua; `Elevated-Trading-LLC/photoEditor` was
+  re-created as a standalone PUBLIC repo from a clean export of this checkout (scratch dir, `git init`):
+  root commit `dd21b6b`, 15 files, authored `Joshua Brown <j@jadedviber.com>`.
+- Contents: the running code (`combined_processor.py`, `focal_cut.py`, `tk_app/app.py`, `test_focal_cut.py`,
+  `build_app.sh`, `requirements.txt`, font, icon), INSTALL.md + 3 screenshots, LICENSE, and a README rewritten
+  in the elevatedCore shape (what it is · how a photo reaches the website · what it does · install · if it
+  breaks · reference). Left out: TODO, changelog, CLAUDE.md, README.html, INSTALL-README.pdf, `run_python.sh`,
+  `tk_app/*.md` (stale), the Drive-era "Google can't scan" screenshot.
+- LICENSE owner line → `Joshua Brown <j@jadedviber.com>`; that line is the only place his name appears.
+- Release `v1.0.0` re-cut from `release/PhotoEditor.zip` (sha256 e42b0ced…); the install link serves it again.
+- Local remote `elevated` removed (pointed at the old fork).
+
+**Pending:** collaborators (Cesar admin, Cody + Cynthia read) — see TODO.md.
+
+---
+
 ## 2026-09-15 - Distribution moved to GitHub Releases (Elevated org)
 
 **What changed:**

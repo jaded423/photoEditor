@@ -7,9 +7,9 @@ Batch photo and video processor for product photography. Removes backgrounds, re
 ## Repository
 
 - **Canonical (upstream):** `jaded423/photoEditor` — owned by Joshua, source of truth. Local `origin` points here.
-- **Fork:** `Elevated-Trading-LLC/photoEditor` — a GitHub fork of upstream. Local remote `elevated`. Org devs work here and PR up to upstream `main`; pull upstream changes back via GitHub "Sync fork".
-- **Archive:** `Elevated-Trading-LLC/photoEditor-archive` — read-only pre-fork history (the n8n webhook edition). The full webhook app is also recoverable at the `webhook-edition` tag on upstream.
-- **Branch convention:** direct push to `main` (global commit/push doctrine, 2026-08-21); the fork syncs down via GitHub "Sync fork". No PRs for Joshua's own work.
+- **Org copy:** `Elevated-Trading-LLC/photoEditor` — a standalone PUBLIC repo (not a fork), created 2026-09-24 from a clean export of this checkout: one root commit, code + docs only, branch `master`, no TODO/changelog/CLAUDE.md. No git link between the two — changes travel by copying files into a clone of the org repo (see § Distribution).
+- **Naming rule:** Joshua's name appears ONCE in the org repo — the LICENSE owner line `Copyright (c) 2026 Joshua Brown <j@jadedviber.com>` (MIT; his IP, Cody OK'd showing it on jadedviber.com). README carries no byline, links or staff names.
+- **Branch convention:** direct push to `main` here; `master` on the org repo.
 
 ## Architecture
 
@@ -76,9 +76,9 @@ Requires Python 3.13 at `/Library/Frameworks/Python.framework/Versions/3.13/`. B
 
 ## Distribution
 
-- **GitHub Releases on the org repo** (`Elevated-Trading-LLC/photoEditor`, public) since 2026-09-15 — the Drive zip is retired.
+- **GitHub Releases on the org repo** (`Elevated-Trading-LLC/photoEditor`, must stay PUBLIC: `releases/latest/download/…` is an anonymous link, a private repo would 404 it for Cynthia's Claude session) since 2026-09-15 — the Drive zip is retired. The v1.0.0 zip is also saved at `release/PhotoEditor.zip` here (gitignored; sha256 e42b0ced…, identical to `dist/PhotoEditor.zip`).
   Recipients use the permanent link `https://github.com/Elevated-Trading-LLC/photoEditor/releases/latest/download/PhotoEditor.zip` (always the newest release).
-- **Ship an update:** push code → `./build_app.sh` + `ditto -c -k --keepParent dist/PhotoEditor.app dist/PhotoEditor.zip` (Mac mini) → `gh repo sync Elevated-Trading-LLC/photoEditor --source jaded423/photoEditor` → `gh release create vX.Y.Z dist/PhotoEditor.zip -R Elevated-Trading-LLC/photoEditor --target main`. Org repo's branch is `main`, local/personal is `main` too (not `master`).
+- **Ship an update:** `./build_app.sh` + `ditto -c -k --keepParent dist/PhotoEditor.app dist/PhotoEditor.zip` (Mac) → copy the changed source files into a clone of the org repo, one commit, push → `gh release create vX.Y.Z dist/PhotoEditor.zip -R Elevated-Trading-LLC/photoEditor`. The permanent link then serves the new build.
 - **Cynthia installs via her own Claude Code session** (proven 2026-09-15): she hands it the release link; it downloads, unzips, strips quarantine, replaces the old app. Auto-mode blocks the `rm -rf` of the old `.app`, so her Claude prints a `!` command she pastes — expected, not a bug. Her session already holds the link.
 - **Not code-signed** — recipients must run `xattr -cr PhotoEditor.app` after downloading
 - $99/year Apple Developer ID needed for frictionless distribution (not yet set up)
