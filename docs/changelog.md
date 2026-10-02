@@ -13,6 +13,20 @@ Format: Each entry includes date, summary, and details.
 
 ---
 
+## 2026-10-01 - This repo is the upstream; v1.0.0 release cut here
+
+**What changed:**
+- Release `v1.0.0` created on `jaded423/photoEditor` with the same `PhotoEditor.zip` (132.8 MB) the Elevated org's copy carries. `…/releases/latest/download/PhotoEditor.zip` works from this repo.
+- jadedviber.com's project page downloads from here now.
+
+**Why:**
+- Joshua left Elevated 2026-09-30. `Elevated-Trading-LLC/photoEditor` is theirs to keep or move; this repo is the one Joshua updates, and Cesar pulls from it if they want a newer build. It stays unarchived while the other Elevated repos were archived the same day.
+
+**Technical notes:**
+- A new build means a new release HERE first; the org copy is downstream.
+
+---
+
 ## 2026-09-24 - Fresh org repo: Elevated-Trading-LLC/photoEditor, one clean commit
 
 **What changed:**
